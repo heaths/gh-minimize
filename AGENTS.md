@@ -10,6 +10,7 @@
 - GitHub integration prefer `go-gh` and GitHub GraphQL
 - follow idiomatic Go style and stdlib-first design
 - keep changes small explicit typed and testable
+- keep this file concise to reduce tokens but stay human-reviewable
 
 ## Command rules
 - forms
@@ -48,7 +49,7 @@
 - format with `gofmt`
 - manage deps with `go mod tidy`
 - run tests with `go test ./...`
-- add focused unit tests beside changed behavior
+- add or update focused tests when feasible
   - `internal/cmd/root_test.go`
   - `internal/options/options_test.go`
   - `internal/github/*_test.go`

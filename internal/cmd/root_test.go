@@ -55,9 +55,9 @@ func TestValidateFlags(t *testing.T) {
 		{
 			name: "id cannot combine with search args",
 			opts: rootOptions{
-				id:     "id",
-				reason: "abuse",
-				author: "octocat",
+				id:      "id",
+				reason:  "abuse",
+				authors: []string{"octocat"},
 			},
 			wantErr: "--id cannot be used",
 		},
@@ -71,16 +71,16 @@ func TestValidateFlags(t *testing.T) {
 		{
 			name: "requires issue or pr number without id",
 			opts: rootOptions{
-				reason: "abuse",
-				author: "octocat",
+				reason:  "abuse",
+				authors: []string{"octocat"},
 			},
 			wantErr: "exactly one issue or pull request number argument is required",
 		},
 		{
 			name: "accepts search with issue or pr number",
 			opts: rootOptions{
-				reason: "abuse",
-				author: "octocat",
+				reason:  "abuse",
+				authors: []string{"octocat", "hubot"},
 			},
 			args: []string{"123"},
 		},
@@ -105,18 +105,30 @@ func TestValidateFlags(t *testing.T) {
 	}
 }
 
+func TestNew_AuthorFlagSupportsMultipleSwitches(t *testing.T) {
+	cmd := New()
+
+	err := cmd.ParseFlags([]string{"--author", "octocat", "--author", "hubot"})
+	require.NoError(t, err)
+
+	authors, err := cmd.Flags().GetStringArray("author")
+	require.NoError(t, err)
+	require.Equal(t, []string{"octocat", "hubot"}, authors)
+}
+
 func TestFilterCommentIDs(t *testing.T) {
 	comments := []ghclient.Comment{
 		{ID: "1", Author: ghclient.Actor{Login: "octocat"}, Body: "hello world", IsMinimized: false},
 		{ID: "2", Author: ghclient.Actor{Login: "octocat"}, Body: "old context", IsMinimized: true},
 		{ID: "3", Author: ghclient.Actor{Login: "hubot"}, Body: "old context", IsMinimized: false},
+		{ID: "4", Author: ghclient.Actor{Login: "MONA"}, Body: "old context", IsMinimized: false},
 	}
 
 	re := regexp.MustCompile("old")
-	gotMinimize := filterCommentIDs(comments, "octocat", re, false)
-	require.Equal(t, []string{}, gotMinimize)
+	gotMinimize := filterCommentIDs(comments, []string{"octocat", "mona"}, re, false)
+	require.Equal(t, []string{"4"}, gotMinimize)
 
-	gotUndo := filterCommentIDs(comments, "octocat", re, true)
+	gotUndo := filterCommentIDs(comments, []string{"octocat", "hubot"}, re, true)
 	require.Equal(t, []string{"2"}, gotUndo)
 }
 
