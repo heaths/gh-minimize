@@ -6,7 +6,9 @@ on:
     - "v*"
 
 permissions:
+  attestations: write
   contents: write
+  id-token: write
   pull-requests: read
 
 defaults:
@@ -28,9 +30,8 @@ jobs:
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       with:
         fetch-depth: 0
-    - name: Release
-      run: gh release create ${{ github.ref_name }} --generate-notes
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    - name: Publish docs
-      run: curl https://proxy.golang.org/github.com/${{ github.repository }}/@v/${{ github.ref_name }}.info
+    - name: Publish
+      uses: cli/gh-extension-precompile@76961aa3bd1123d0a6fd42d0a41aca0696937c39 # v2.2.0
+      with:
+        generate_attestations: true
+        go_version_file: go.mod
