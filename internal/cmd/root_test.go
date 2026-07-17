@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"testing"
@@ -39,6 +40,16 @@ func (m *mockService) UnminimizeComment(id string) error {
 	}
 	m.unminimized = append(m.unminimized, id)
 	return nil
+}
+
+func TestMain(m *testing.M) {
+	oldDetectPrettyJSONSupport := detectPrettyJSONSupport
+	detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
+		return false, false
+	}
+	code := m.Run()
+	detectPrettyJSONSupport = oldDetectPrettyJSONSupport
+	os.Exit(code)
 }
 
 func TestValidateFlags(t *testing.T) {
@@ -117,6 +128,16 @@ func TestNew_AuthorFlagSupportsMultipleSwitches(t *testing.T) {
 	require.Equal(t, []string{"octocat", "hubot"}, authors)
 }
 
+func TestNew_RepoFlagIsPersistent(t *testing.T) {
+	cmd := New()
+
+	require.NotNil(t, cmd.PersistentFlags().Lookup("repo"))
+
+	listCmd, _, err := cmd.Find([]string{"list"})
+	require.NoError(t, err)
+	require.NotNil(t, listCmd.InheritedFlags().Lookup("repo"))
+}
+
 func TestNew_UsesGhCommandNameWhenRunningUnderGh(t *testing.T) {
 	oldExecutableName := executableName
 	t.Cleanup(func() {
@@ -147,17 +168,17 @@ func TestNew_UsesExecutableNameOutsideGh(t *testing.T) {
 
 func TestFilterCommentIDs(t *testing.T) {
 	comments := []ghclient.Comment{
-		{ID: "1", Author: ghclient.Actor{Login: "octocat"}, Body: "hello world", IsMinimized: false},
-		{ID: "2", Author: ghclient.Actor{Login: "octocat"}, Body: "old context", IsMinimized: true},
-		{ID: "3", Author: ghclient.Actor{Login: "hubot"}, Body: "old context", IsMinimized: false},
-		{ID: "4", Author: ghclient.Actor{Login: "MONA"}, Body: "old context", IsMinimized: false},
+		{ID: "1", Author: "octocat", Body: "hello world", IsMinimized: false},
+		{ID: "2", Author: "octocat", Body: "old context", IsMinimized: true},
+		{ID: "3", Author: "hubot", Body: "old context", IsMinimized: false},
+		{ID: "4", Author: "MONA", Body: "old context", IsMinimized: false},
 	}
 
 	re := regexp.MustCompile("old")
-	gotMinimize := filterCommentIDs(comments, []string{"octocat", "mona"}, re, false)
+	gotMinimize := filterCommentIDs(filterComments(comments, []string{"octocat", "mona"}, re), false)
 	require.Equal(t, []string{"4"}, gotMinimize)
 
-	gotUndo := filterCommentIDs(comments, []string{"octocat", "hubot"}, re, true)
+	gotUndo := filterCommentIDs(filterComments(comments, []string{"octocat", "hubot"}, re), true)
 	require.Equal(t, []string{"2"}, gotUndo)
 }
 
@@ -191,4 +212,156 @@ func TestApplyAction_UnminimizeError(t *testing.T) {
 
 	err := applyAction(opts, []string{"a"})
 	require.ErrorContains(t, err, "failed to update comment a")
+}
+
+func TestRunList_DefaultOutput(t *testing.T) {
+	out := &bytes.Buffer{}
+	opts := &listOptions{
+		global: &globalOptions{repo: "OWNER/REPO"},
+		stdout: out,
+		client: &mockService{
+			comments: []ghclient.Comment{
+				{
+					ID:              "1",
+					Author:          "octocat",
+					Body:            "hello",
+					IsMinimized:     true,
+					MinimizedReason: "OUTDATED",
+				},
+			},
+		},
+	}
+
+	err := runList(opts, []string{"123"})
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"id":"1","author":"octocat","body":"hello","isMinimized":true,"minimizedReason":"OUTDATED"}]`, out.String())
+}
+
+func TestRunList_JQOutput(t *testing.T) {
+	out := &bytes.Buffer{}
+	opts := &listOptions{
+		global:       &globalOptions{repo: "OWNER/REPO"},
+		jqExpression: ".[].author",
+		stdout:       out,
+		client: &mockService{
+			comments: []ghclient.Comment{
+				{
+					ID:              "1",
+					Author:          "octocat",
+					Body:            "hello",
+					IsMinimized:     true,
+					MinimizedReason: "OUTDATED",
+				},
+			},
+		},
+	}
+
+	err := runList(opts, []string{"123"})
+	require.NoError(t, err)
+	require.Equal(t, "octocat\n", out.String())
+}
+
+func TestRunList_SelectedJSONFields(t *testing.T) {
+	out := &bytes.Buffer{}
+	opts := &listOptions{
+		global:     &globalOptions{repo: "OWNER/REPO"},
+		jsonFields: "id,author",
+		stdout:     out,
+		client: &mockService{
+			comments: []ghclient.Comment{
+				{
+					ID:              "1",
+					Author:          "octocat",
+					Body:            "hello",
+					IsMinimized:     true,
+					MinimizedReason: "OUTDATED",
+				},
+			},
+		},
+	}
+
+	err := runList(opts, []string{"123"})
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"id":"1","author":"octocat"}]`, out.String())
+}
+
+func TestRunList_FilteredOutput(t *testing.T) {
+	out := &bytes.Buffer{}
+	opts := &listOptions{
+		global:   &globalOptions{repo: "OWNER/REPO"},
+		authors:  []string{"hubot"},
+		bodyGrep: "old",
+		stdout:   out,
+		client: &mockService{
+			comments: []ghclient.Comment{
+				{ID: "1", Author: "octocat", Body: "old context"},
+				{ID: "2", Author: "hubot", Body: "old context"},
+				{ID: "3", Author: "hubot", Body: "new context"},
+			},
+		},
+	}
+
+	err := runList(opts, []string{"123"})
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"id":"2","author":"hubot","body":"old context","isMinimized":false,"minimizedReason":""}]`, out.String())
+}
+
+func TestWriteCommentOutput_PrettyPrintsJSON(t *testing.T) {
+	t.Cleanup(func() {
+		detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
+			return false, false
+		}
+	})
+	detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
+		return true, false
+	}
+
+	out := &bytes.Buffer{}
+	err := writeCommentOutput(&listOptions{stdout: out}, []ghclient.Comment{
+		{ID: "1", Author: "octocat", Body: "hello"},
+	})
+	require.NoError(t, err)
+	require.Contains(t, out.String(), "\n  {\n")
+	require.Contains(t, out.String(), `"author": "octocat"`)
+}
+
+func TestWriteCommentOutput_DoesNotPrettyPrintTemplate(t *testing.T) {
+	t.Cleanup(func() {
+		detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
+			return false, false
+		}
+	})
+	detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
+		return true, false
+	}
+
+	out := &bytes.Buffer{}
+	err := writeCommentOutput(&listOptions{
+		stdout: out,
+		tmpl:   "{{range .}}{{.author}}{{end}}",
+	}, []ghclient.Comment{
+		{ID: "1", Author: "octocat", Body: "hello"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "octocat", out.String())
+}
+
+func TestLoadFilteredComments_InvalidRegex(t *testing.T) {
+	_, err := loadFilteredComments(&mockService{}, "OWNER/REPO", []string{"123"}, nil, "[")
+	require.ErrorContains(t, err, "invalid --body-grep regex")
+}
+
+func TestLoadFilteredComments_FiltersPageableResults(t *testing.T) {
+	comments, err := loadFilteredComments(&mockService{
+		comments: []ghclient.Comment{
+			{ID: "1", Author: "octocat", Body: "keep this"},
+			{ID: "2", Author: "hubot", Body: "drop this"},
+			{ID: "3", Author: "octocat", Body: "keep that"},
+		},
+	}, "OWNER/REPO", []string{"123"}, []string{"octocat"}, "keep")
+	require.NoError(t, err)
+	require.Equal(t, []ghclient.Comment{
+		{ID: "1", Author: "octocat", Body: "keep this"},
+		{ID: "3", Author: "octocat", Body: "keep that"},
+	}, comments)
 }
