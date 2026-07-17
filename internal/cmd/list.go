@@ -3,31 +3,15 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
-	"os"
 	"regexp"
 
+	"github.com/cli/cli/v2/pkg/iostreams"
 	ghjq "github.com/cli/go-gh/pkg/jq"
 	"github.com/cli/go-gh/pkg/jsonpretty"
 	ghtemplate "github.com/cli/go-gh/pkg/template"
-	ghterm "github.com/cli/go-gh/pkg/term"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 )
-
-var detectPrettyJSONSupport = func(w io.Writer) (enabled bool, colorize bool) {
-	if w == os.Stdout {
-		terminal := ghterm.FromEnv()
-		return terminal.IsTerminalOutput(), terminal.IsColorEnabled()
-	}
-
-	file, ok := w.(*os.File)
-	if !ok || !ghterm.IsTerminal(file) {
-		return false, false
-	}
-
-	return true, false
-}
 
 func runList(opts *listOptions, args []string) error {
 	client, err := ensureClient(opts.client)
@@ -52,7 +36,7 @@ func writeCommentOutput(opts *listOptions, comments []ghclient.Comment) error {
 	reader := bytes.NewReader(data)
 	switch {
 	case opts.tmpl != "":
-		tmpl := ghtemplate.New(opts.stdout, 120, false)
+		tmpl := ghtemplate.New(opts.io.Out, opts.io.TerminalWidth(), opts.io.ColorEnabled())
 		if err := tmpl.Parse(opts.tmpl); err != nil {
 			return err
 		}
@@ -61,9 +45,9 @@ func writeCommentOutput(opts *listOptions, comments []ghclient.Comment) error {
 		}
 		return tmpl.Flush()
 	case opts.jqExpression != "":
-		return ghjq.Evaluate(reader, opts.stdout, opts.jqExpression)
+		return ghjq.Evaluate(reader, opts.io.Out, opts.jqExpression)
 	default:
-		return writeJSONOutput(opts.stdout, reader)
+		return writeJSONOutput(opts.io, reader)
 	}
 }
 
@@ -113,20 +97,23 @@ func marshalJSON(v interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func writeJSONOutput(w io.Writer, input io.Reader) error {
-	if err := prettyPrintJSONOutput(w, input); err == nil {
+func writeJSONOutput(streams *iostreams.IOStreams, input io.Reader) error {
+	if err := prettyPrintJSONOutput(streams, input); err == nil {
 		return nil
 	}
 
-	_, err := io.Copy(w, input)
+	_, err := io.Copy(streams.Out, input)
 	return err
 }
 
-func prettyPrintJSONOutput(w io.Writer, input io.Reader) error {
-	enabled, colorize := detectPrettyJSONSupport(w)
-	if !enabled {
-		return fmt.Errorf("pretty JSON output is not supported")
+func prettyPrintJSONOutput(streams *iostreams.IOStreams, input io.Reader) error {
+	if streams == nil || !streams.IsStdoutTTY() {
+		return ioCopyUnsupported{}
 	}
 
-	return jsonpretty.Format(w, input, "  ", colorize)
+	return jsonpretty.Format(streams.Out, input, "  ", streams.ColorEnabled())
 }
+
+type ioCopyUnsupported struct{}
+
+func (ioCopyUnsupported) Error() string { return "pretty JSON output is not supported" }

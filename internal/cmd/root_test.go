@@ -1,14 +1,13 @@
 package cmd
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"regexp"
 	"testing"
 
+	"github.com/cli/cli/v2/pkg/iostreams"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 	"github.com/stretchr/testify/require"
 )
@@ -42,16 +41,6 @@ func (m *mockService) UnminimizeComment(id string) error {
 	return nil
 }
 
-func TestMain(m *testing.M) {
-	oldDetectPrettyJSONSupport := detectPrettyJSONSupport
-	detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
-		return false, false
-	}
-	code := m.Run()
-	detectPrettyJSONSupport = oldDetectPrettyJSONSupport
-	os.Exit(code)
-}
-
 func TestValidateFlags(t *testing.T) {
 	tests := []struct {
 		name    string
@@ -67,9 +56,11 @@ func TestValidateFlags(t *testing.T) {
 		{
 			name: "id cannot combine with search args",
 			opts: rootOptions{
-				id:      "id",
-				reason:  "abuse",
-				authors: []string{"octocat"},
+				id:     "id",
+				reason: "abuse",
+				filterOptions: filterOptions{
+					authors: []string{"octocat"},
+				},
 			},
 			wantErr: "--id cannot be used",
 		},
@@ -83,16 +74,20 @@ func TestValidateFlags(t *testing.T) {
 		{
 			name: "requires issue or pr number without id",
 			opts: rootOptions{
-				reason:  "abuse",
-				authors: []string{"octocat"},
+				reason: "abuse",
+				filterOptions: filterOptions{
+					authors: []string{"octocat"},
+				},
 			},
 			wantErr: "exactly one issue or pull request number argument is required",
 		},
 		{
 			name: "accepts search with issue or pr number",
 			opts: rootOptions{
-				reason:  "abuse",
-				authors: []string{"octocat", "hubot"},
+				reason: "abuse",
+				filterOptions: filterOptions{
+					authors: []string{"octocat", "hubot"},
+				},
 			},
 			args: []string{"123"},
 		},
@@ -183,12 +178,14 @@ func TestFilterCommentIDs(t *testing.T) {
 }
 
 func TestApplyAction_Minimize(t *testing.T) {
-	out := &bytes.Buffer{}
+	io, _, out, _ := iostreams.Test()
 	mock := &mockService{}
 	opts := &rootOptions{
 		reason: "off-topic",
-		stdout: out,
-		client: mock,
+		commonOptions: commonOptions{
+			io:     io,
+			client: mock,
+		},
 	}
 
 	err := applyAction(opts, []string{"a", "b"})
@@ -198,16 +195,18 @@ func TestApplyAction_Minimize(t *testing.T) {
 }
 
 func TestApplyAction_UnminimizeError(t *testing.T) {
-	out := &bytes.Buffer{}
+	io, _, _, _ := iostreams.Test()
 	mock := &mockService{
 		unminimizeErrByID: map[string]error{
 			"a": errors.New("boom"),
 		},
 	}
 	opts := &rootOptions{
-		undo:   true,
-		stdout: out,
-		client: mock,
+		undo: true,
+		commonOptions: commonOptions{
+			io:     io,
+			client: mock,
+		},
 	}
 
 	err := applyAction(opts, []string{"a"})
@@ -215,18 +214,20 @@ func TestApplyAction_UnminimizeError(t *testing.T) {
 }
 
 func TestRunList_DefaultOutput(t *testing.T) {
-	out := &bytes.Buffer{}
+	io, _, out, _ := iostreams.Test()
 	opts := &listOptions{
-		global: &globalOptions{repo: "OWNER/REPO"},
-		stdout: out,
-		client: &mockService{
-			comments: []ghclient.Comment{
-				{
-					ID:              "1",
-					Author:          "octocat",
-					Body:            "hello",
-					IsMinimized:     true,
-					MinimizedReason: "OUTDATED",
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: &mockService{
+				comments: []ghclient.Comment{
+					{
+						ID:              "1",
+						Author:          "octocat",
+						Body:            "hello",
+						IsMinimized:     true,
+						MinimizedReason: "OUTDATED",
+					},
 				},
 			},
 		},
@@ -238,19 +239,21 @@ func TestRunList_DefaultOutput(t *testing.T) {
 }
 
 func TestRunList_JQOutput(t *testing.T) {
-	out := &bytes.Buffer{}
+	io, _, out, _ := iostreams.Test()
 	opts := &listOptions{
-		global:       &globalOptions{repo: "OWNER/REPO"},
 		jqExpression: ".[].author",
-		stdout:       out,
-		client: &mockService{
-			comments: []ghclient.Comment{
-				{
-					ID:              "1",
-					Author:          "octocat",
-					Body:            "hello",
-					IsMinimized:     true,
-					MinimizedReason: "OUTDATED",
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: &mockService{
+				comments: []ghclient.Comment{
+					{
+						ID:              "1",
+						Author:          "octocat",
+						Body:            "hello",
+						IsMinimized:     true,
+						MinimizedReason: "OUTDATED",
+					},
 				},
 			},
 		},
@@ -262,19 +265,21 @@ func TestRunList_JQOutput(t *testing.T) {
 }
 
 func TestRunList_SelectedJSONFields(t *testing.T) {
-	out := &bytes.Buffer{}
+	io, _, out, _ := iostreams.Test()
 	opts := &listOptions{
-		global:     &globalOptions{repo: "OWNER/REPO"},
 		jsonFields: "id,author",
-		stdout:     out,
-		client: &mockService{
-			comments: []ghclient.Comment{
-				{
-					ID:              "1",
-					Author:          "octocat",
-					Body:            "hello",
-					IsMinimized:     true,
-					MinimizedReason: "OUTDATED",
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: &mockService{
+				comments: []ghclient.Comment{
+					{
+						ID:              "1",
+						Author:          "octocat",
+						Body:            "hello",
+						IsMinimized:     true,
+						MinimizedReason: "OUTDATED",
+					},
 				},
 			},
 		},
@@ -286,17 +291,21 @@ func TestRunList_SelectedJSONFields(t *testing.T) {
 }
 
 func TestRunList_FilteredOutput(t *testing.T) {
-	out := &bytes.Buffer{}
+	io, _, out, _ := iostreams.Test()
 	opts := &listOptions{
-		global:   &globalOptions{repo: "OWNER/REPO"},
-		authors:  []string{"hubot"},
-		bodyGrep: "old",
-		stdout:   out,
-		client: &mockService{
-			comments: []ghclient.Comment{
-				{ID: "1", Author: "octocat", Body: "old context"},
-				{ID: "2", Author: "hubot", Body: "old context"},
-				{ID: "3", Author: "hubot", Body: "new context"},
+		filterOptions: filterOptions{
+			authors:  []string{"hubot"},
+			bodyGrep: "old",
+		},
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: &mockService{
+				comments: []ghclient.Comment{
+					{ID: "1", Author: "octocat", Body: "old context"},
+					{ID: "2", Author: "hubot", Body: "old context"},
+					{ID: "3", Author: "hubot", Body: "new context"},
+				},
 			},
 		},
 	}
@@ -307,17 +316,11 @@ func TestRunList_FilteredOutput(t *testing.T) {
 }
 
 func TestWriteCommentOutput_PrettyPrintsJSON(t *testing.T) {
-	t.Cleanup(func() {
-		detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
-			return false, false
-		}
-	})
-	detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
-		return true, false
-	}
+	io, _, out, _ := iostreams.Test()
+	io.SetStdoutTTY(true)
+	io.SetColorEnabled(false)
 
-	out := &bytes.Buffer{}
-	err := writeCommentOutput(&listOptions{stdout: out}, []ghclient.Comment{
+	err := writeCommentOutput(&listOptions{commonOptions: commonOptions{io: io}}, []ghclient.Comment{
 		{ID: "1", Author: "octocat", Body: "hello"},
 	})
 	require.NoError(t, err)
@@ -326,19 +329,13 @@ func TestWriteCommentOutput_PrettyPrintsJSON(t *testing.T) {
 }
 
 func TestWriteCommentOutput_DoesNotPrettyPrintTemplate(t *testing.T) {
-	t.Cleanup(func() {
-		detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
-			return false, false
-		}
-	})
-	detectPrettyJSONSupport = func(_ io.Writer) (bool, bool) {
-		return true, false
-	}
+	io, _, out, _ := iostreams.Test()
+	io.SetStdoutTTY(true)
+	io.SetColorEnabled(false)
 
-	out := &bytes.Buffer{}
 	err := writeCommentOutput(&listOptions{
-		stdout: out,
-		tmpl:   "{{range .}}{{.author}}{{end}}",
+		commonOptions: commonOptions{io: io},
+		tmpl:          "{{range .}}{{.author}}{{end}}",
 	}, []ghclient.Comment{
 		{ID: "1", Author: "octocat", Body: "hello"},
 	})

@@ -2,14 +2,15 @@ package cmd
 
 import (
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/cli/cli/v2/pkg/iostreams"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 type commentService interface {
@@ -18,32 +19,31 @@ type commentService interface {
 	UnminimizeComment(id string) error
 }
 
-type rootOptions struct {
-	id       string
-	authors  []string
-	bodyGrep string
-	reason   string
-	undo     bool
-
-	stdout io.Writer
-	stderr io.Writer
-
+type commonOptions struct {
+	io     *iostreams.IOStreams
 	global *globalOptions
 	client commentService
 }
 
+type filterOptions struct {
+	authors  []string
+	bodyGrep string
+}
+
+type rootOptions struct {
+	commonOptions
+	filterOptions
+	id     string
+	reason string
+	undo   bool
+}
+
 type listOptions struct {
-	authors      []string
-	bodyGrep     string
+	commonOptions
+	filterOptions
 	jsonFields   string
 	jqExpression string
 	tmpl         string
-
-	stdout io.Writer
-	stderr io.Writer
-
-	global *globalOptions
-	client commentService
 }
 
 type globalOptions struct {
@@ -61,15 +61,18 @@ var executableName = func() string {
 func New() *cobra.Command {
 	displayName := commandDisplayName()
 	globalOpts := &globalOptions{}
+	streams := iostreams.System()
 	opts := &rootOptions{
-		stdout: os.Stdout,
-		stderr: os.Stderr,
-		global: globalOpts,
+		commonOptions: commonOptions{
+			io:     streams,
+			global: globalOpts,
+		},
 	}
 	listOpts := &listOptions{
-		stdout: os.Stdout,
-		stderr: os.Stderr,
-		global: globalOpts,
+		commonOptions: commonOptions{
+			io:     streams,
+			global: globalOpts,
+		},
 	}
 
 	cmd := &cobra.Command{
@@ -100,8 +103,7 @@ func New() *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.StringVar(&opts.id, "id", "", "Comment node ID")
-	flags.StringArrayVar(&opts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
-	flags.StringVar(&opts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
+	addFilterFlags(flags, &opts.filterOptions)
 	flags.StringVar(&opts.reason, "reason", "", fmt.Sprintf("Minimization reason (%s)", strings.Join(ghclient.AllowedReasons(), ", ")))
 	flags.BoolVar(&opts.undo, "undo", false, "Unminimize comments")
 	_ = cmd.RegisterFlagCompletionFunc("reason", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
@@ -123,8 +125,7 @@ func New() *cobra.Command {
 		SilenceErrors: true,
 	}
 	listFlags := listCmd.Flags()
-	listFlags.StringArrayVar(&listOpts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
-	listFlags.StringVar(&listOpts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
+	addFilterFlags(listFlags, &listOpts.filterOptions)
 	listFlags.StringVar(&listOpts.jsonFields, "json", "", fmt.Sprintf("Output JSON with the specified fields (%s)", strings.Join(ghclient.CommentFields(), ",")))
 	listFlags.StringVar(&listOpts.jqExpression, "jq", "", "Filter JSON output using a jq expression")
 	listFlags.StringVar(&listOpts.tmpl, "template", "", "Format JSON output using a Go template")
@@ -132,6 +133,11 @@ func New() *cobra.Command {
 	cmd.AddCommand(listCmd)
 
 	return cmd
+}
+
+func addFilterFlags(flags *pflag.FlagSet, opts *filterOptions) {
+	flags.StringArrayVar(&opts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
+	flags.StringVar(&opts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
 }
 
 func commandDisplayName() string {
@@ -197,15 +203,7 @@ func validateFlags(opts *rootOptions, args []string) error {
 	return nil
 }
 
-func (opts *rootOptions) repoFlag() string {
-	if opts.global != nil {
-		return opts.global.repo
-	}
-
-	return ""
-}
-
-func (opts *listOptions) repoFlag() string {
+func (opts commonOptions) repoFlag() string {
 	if opts.global != nil {
 		return opts.global.repo
 	}
@@ -242,7 +240,7 @@ func matchesAuthor(login string, authors []string) bool {
 
 func applyAction(opts *rootOptions, ids []string) error {
 	if len(ids) == 0 {
-		_, _ = fmt.Fprintln(opts.stdout, "No matching comments found.")
+		_, _ = fmt.Fprintln(opts.io.Out, "No matching comments found.")
 		return nil
 	}
 
@@ -272,6 +270,6 @@ func applyAction(opts *rootOptions, ids []string) error {
 	if opts.undo {
 		action = "Unminimized"
 	}
-	_, _ = fmt.Fprintf(opts.stdout, "%s %d comment(s).\n", action, updated)
+	_, _ = fmt.Fprintf(opts.io.Out, "%s %d comment(s).\n", action, updated)
 	return nil
 }
