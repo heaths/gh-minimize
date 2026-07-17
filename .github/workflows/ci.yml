@@ -22,7 +22,7 @@ defaults:
     shell: bash
 
 env:
-  GOVERSION: "1.24"
+  GOVERSION: "1.26"
 
 jobs:
   test:
@@ -46,7 +46,7 @@ jobs:
       uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
       with:
         go-version: ${{ env.GOVERSION }}
-        cache: false # Set to `true` when dependencies are added.
+        cache: false
     - name: Test
       run: GOOS=${{ matrix.goos }} go test ./... -cover -v
     - name: Lint
