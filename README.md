@@ -1,7 +1,6 @@
 # Gh-Minimize
 
 [![releases](https://img.shields.io/github/v/release/heaths/gh-minimize.svg?logo=github)](https://github.com/heaths/gh-minimize/releases/latest)
-[![reference](https://pkg.go.dev/badge/github.com/heaths/gh-minimize.svg)](https://pkg.go.dev/github.com/heaths/gh-minimize)
 [![ci](https://github.com/heaths/gh-minimize/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/heaths/gh-minimize/actions/workflows/ci.yml)
 
 GitHub CLI extension to minimize or unminimize issue and pull request comments.
