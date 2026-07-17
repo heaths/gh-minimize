@@ -1,0 +1,56 @@
+{
+  "version": "0.2",
+  "language": "en",
+  "useGitignore": true,
+  "ignorePaths": [
+    ".cspell.json",
+    ".devcontainer/",
+    ".github/",
+    ".vscode/",
+    "go.mod",
+    "go.sum"
+  ],
+  "words": [
+    "golang",
+    "ghclient",
+    "gofmt",
+    "hubot",
+    "Oklzc",
+    "octocat",
+    "stdlib",
+    "stretchr",
+    "unminimize",
+    "unminimizes",
+    "unminimized"
+  ],
+  "dictionaryDefinitions": [
+    {
+      "name": "modules",
+      "words": [
+        "dotenv"
+      ],
+      "noSuggest": true
+    }
+  ],
+  "overrides": [
+    {
+      "filename": "Cargo.toml",
+      "dictionaries": [
+        "modules"
+      ]
+    },
+    {
+      "filename": "**/*.md",
+      "dictionaries": [
+        "modules",
+        "golang"
+      ]
+    },
+    {
+      "filename": "**/*.go",
+      "dictionaries": [
+        "modules"
+      ]
+    }
+  ]
+}
