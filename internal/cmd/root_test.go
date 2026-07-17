@@ -73,16 +73,6 @@ func TestValidateFlags(t *testing.T) {
 			wantErr: "at least one of --author or --body-grep",
 		},
 		{
-			name: "requires issue or pr number without id",
-			opts: rootOptions{
-				reason: "abuse",
-				filterOptions: filterOptions{
-					authors: []string{"octocat"},
-				},
-			},
-			wantErr: "exactly one issue or pull request number argument is required",
-		},
-		{
 			name: "accepts search with issue or pr number",
 			opts: rootOptions{
 				reason: "abuse",
@@ -91,6 +81,15 @@ func TestValidateFlags(t *testing.T) {
 				},
 			},
 			args: []string{"123"},
+		},
+		{
+			name: "accepts search without issue or pr number",
+			opts: rootOptions{
+				reason: "abuse",
+				filterOptions: filterOptions{
+					authors: []string{"octocat", "hubot"},
+				},
+			},
 		},
 		{
 			name: "accepts id minimize",

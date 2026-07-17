@@ -27,7 +27,7 @@ func loadFilteredComments(client commentService, repoFlag string, args []string,
 		return nil, err
 	}
 
-	targetNumber, err := options.ResolveIssueOrPullRequestNumber(args)
+	targetNumber, err := options.ResolveIssueOrPullRequestNumber(args, repoFlag)
 	if err != nil {
 		return nil, err
 	}
