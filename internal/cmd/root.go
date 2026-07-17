@@ -21,7 +21,7 @@ type commentService interface {
 
 type rootOptions struct {
 	id       string
-	author   string
+	authors  []string
 	bodyGrep string
 	reason   string
 	undo     bool
@@ -44,12 +44,13 @@ func New() *cobra.Command {
 		Short: "Minimize or unminimize issue and pull request comments",
 		Long: heredoc.Doc(`
 			Minimize or unminimize issue and pull request comments by node ID
-			or by searching comment author and body text.
+			or by searching comment authors and body text.
 		`),
 		Example: heredoc.Doc(`
 			$ gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic
 			$ gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --undo
 			$ gh minimize 123 --author octocat --body-grep 'obsolete.*context' --reason outdated
+			$ gh minimize 123 --author octocat --author hubot --reason resolved
 			$ gh minimize 123 --author octocat --body-grep 'obsolete.*context' --undo
 		`),
 		Args: cobra.MaximumNArgs(1),
@@ -62,7 +63,7 @@ func New() *cobra.Command {
 
 	flags := cmd.Flags()
 	flags.StringVar(&opts.id, "id", "", "Comment node ID")
-	flags.StringVar(&opts.author, "author", "", "Comment author login filter")
+	flags.StringArrayVar(&opts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
 	flags.StringVar(&opts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
 	flags.StringVar(&opts.reason, "reason", "", fmt.Sprintf("Minimization reason (%s)", strings.Join(ghclient.AllowedReasons(), ", ")))
 	flags.BoolVar(&opts.undo, "undo", false, "Unminimize comments")
@@ -117,7 +118,7 @@ func run(opts *rootOptions, args []string) error {
 		return fmt.Errorf("failed to find comments: %w", err)
 	}
 
-	ids := filterCommentIDs(comments, opts.author, bodyRegex, opts.undo)
+	ids := filterCommentIDs(comments, opts.authors, bodyRegex, opts.undo)
 	return applyAction(opts, ids)
 }
 
@@ -137,12 +138,12 @@ func validateFlags(opts *rootOptions, args []string) error {
 		if len(args) > 0 {
 			return fmt.Errorf("--id cannot be used with an issue or pull request number")
 		}
-		if opts.author != "" || opts.bodyGrep != "" {
+		if len(opts.authors) > 0 || opts.bodyGrep != "" {
 			return fmt.Errorf("--id cannot be used with --author or --body-grep")
 		}
 		return nil
 	}
-	if opts.author == "" && opts.bodyGrep == "" {
+	if len(opts.authors) == 0 && opts.bodyGrep == "" {
 		return fmt.Errorf("at least one of --author or --body-grep is required when --id is not provided")
 	}
 	if len(args) != 1 {
@@ -152,11 +153,11 @@ func validateFlags(opts *rootOptions, args []string) error {
 	return nil
 }
 
-func filterCommentIDs(comments []ghclient.Comment, author string, bodyRegex *regexp.Regexp, undo bool) []string {
+func filterCommentIDs(comments []ghclient.Comment, authors []string, bodyRegex *regexp.Regexp, undo bool) []string {
 	ids := make([]string, 0, len(comments))
 
 	for _, comment := range comments {
-		if author != "" && !strings.EqualFold(comment.Author.Login, author) {
+		if len(authors) > 0 && !matchesAuthor(comment.Author.Login, authors) {
 			continue
 		}
 		if bodyRegex != nil && !bodyRegex.MatchString(comment.Body) {
@@ -173,6 +174,16 @@ func filterCommentIDs(comments []ghclient.Comment, author string, bodyRegex *reg
 	}
 
 	return ids
+}
+
+func matchesAuthor(login string, authors []string) bool {
+	for _, author := range authors {
+		if strings.EqualFold(login, author) {
+			return true
+		}
+	}
+
+	return false
 }
 
 func applyAction(opts *rootOptions, ids []string) error {
