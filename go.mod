@@ -1,6 +1,8 @@
 module github.com/heaths/gh-minimize
 
-go 1.21
+go 1.24
+
+toolchain go1.24.13
 
 require (
 	github.com/MakeNowJust/heredoc v1.0.0
