@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"regexp"
 	"testing"
 
@@ -114,6 +115,34 @@ func TestNew_AuthorFlagSupportsMultipleSwitches(t *testing.T) {
 	authors, err := cmd.Flags().GetStringArray("author")
 	require.NoError(t, err)
 	require.Equal(t, []string{"octocat", "hubot"}, authors)
+}
+
+func TestNew_UsesGhCommandNameWhenRunningUnderGh(t *testing.T) {
+	oldExecutableName := executableName
+	t.Cleanup(func() {
+		executableName = oldExecutableName
+	})
+	t.Setenv("GH_EXTENSION", "minimize")
+	executableName = func() string { return "gh-minimize" }
+
+	cmd := New()
+
+	require.Equal(t, "gh minimize [issue-or-pr-number]", cmd.Use)
+	require.Contains(t, cmd.Example, "$ gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic")
+}
+
+func TestNew_UsesExecutableNameOutsideGh(t *testing.T) {
+	oldExecutableName := executableName
+	t.Cleanup(func() {
+		executableName = oldExecutableName
+	})
+	require.NoError(t, os.Unsetenv("GH_EXTENSION"))
+	executableName = func() string { return "gh-minimize" }
+
+	cmd := New()
+
+	require.Equal(t, "gh-minimize [issue-or-pr-number]", cmd.Use)
+	require.Contains(t, cmd.Example, "$ gh-minimize --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic")
 }
 
 func TestFilterCommentIDs(t *testing.T) {
