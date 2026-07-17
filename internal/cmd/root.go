@@ -9,6 +9,7 @@ import (
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/cli/v2/pkg/iostreams"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
+	"github.com/heaths/gh-minimize/internal/options"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -59,9 +60,12 @@ var executableName = func() string {
 }
 
 func New() *cobra.Command {
+	return NewWithIO(iostreams.System())
+}
+
+func NewWithIO(streams *iostreams.IOStreams) *cobra.Command {
 	displayName := commandDisplayName()
 	globalOpts := &globalOptions{}
-	streams := iostreams.System()
 	opts := &rootOptions{
 		commonOptions: commonOptions{
 			io:     streams,
@@ -90,13 +94,15 @@ func New() *cobra.Command {
 			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --undo
 			$ %[1]s list 123
 		`, displayName),
-		Args: cobra.MaximumNArgs(1),
+		Args: positionalIssueOrPullRequestArgs(false),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(opts, args)
 		},
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
+	cmd.SetOut(streams.Out)
+	cmd.SetErr(streams.ErrOut)
 
 	persistentFlags := cmd.PersistentFlags()
 	persistentFlags.StringVarP(&globalOpts.repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
@@ -117,7 +123,7 @@ func New() *cobra.Command {
 		Use:   "list <issue-or-pr-number>",
 		Short: "List issue or review comments to find IDs",
 		Long:  "List issue or review comments so you can find comment IDs.",
-		Args:  cobra.ExactArgs(1),
+		Args:  positionalIssueOrPullRequestArgs(true),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(listOpts, args)
 		},
@@ -138,6 +144,25 @@ func New() *cobra.Command {
 func addFilterFlags(flags *pflag.FlagSet, opts *filterOptions) {
 	flags.StringArrayVar(&opts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
 	flags.StringVar(&opts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
+}
+
+func positionalIssueOrPullRequestArgs(required bool) cobra.PositionalArgs {
+	return func(cmd *cobra.Command, args []string) error {
+		if required {
+			if err := cobra.ExactArgs(1)(cmd, args); err != nil {
+				return err
+			}
+		} else if err := cobra.MaximumNArgs(1)(cmd, args); err != nil {
+			return err
+		}
+
+		if len(args) == 0 {
+			return nil
+		}
+
+		_, err := options.ResolveIssueOrPullRequestNumber(args)
+		return err
+	}
 }
 
 func commandDisplayName() string {

@@ -4,14 +4,24 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
+	"github.com/cli/cli/v2/pkg/iostreams"
 	"github.com/heaths/gh-minimize/internal/cmd"
 )
 
 func main() {
-	root := cmd.New()
+	os.Exit(run(os.Args[1:], iostreams.System()))
+}
+
+func run(args []string, streams *iostreams.IOStreams) int {
+	root := cmd.NewWithIO(streams)
+	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
-		os.Exit(1)
+		_, _ = fmt.Fprintln(streams.ErrOut, err)
+		return 1
 	}
+
+	return 0
 }
