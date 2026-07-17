@@ -5,12 +5,10 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"github.com/MakeNowJust/heredoc"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
-	"github.com/heaths/gh-minimize/internal/options"
 	"github.com/spf13/cobra"
 )
 
@@ -26,12 +24,30 @@ type rootOptions struct {
 	bodyGrep string
 	reason   string
 	undo     bool
-	repo     string
 
 	stdout io.Writer
 	stderr io.Writer
 
+	global *globalOptions
 	client commentService
+}
+
+type listOptions struct {
+	authors      []string
+	bodyGrep     string
+	jsonFields   string
+	jqExpression string
+	tmpl         string
+
+	stdout io.Writer
+	stderr io.Writer
+
+	global *globalOptions
+	client commentService
+}
+
+type globalOptions struct {
+	repo string
 }
 
 var executableName = func() string {
@@ -44,9 +60,16 @@ var executableName = func() string {
 
 func New() *cobra.Command {
 	displayName := commandDisplayName()
+	globalOpts := &globalOptions{}
 	opts := &rootOptions{
 		stdout: os.Stdout,
 		stderr: os.Stderr,
+		global: globalOpts,
+	}
+	listOpts := &listOptions{
+		stdout: os.Stdout,
+		stderr: os.Stderr,
+		global: globalOpts,
 	}
 
 	cmd := &cobra.Command{
@@ -62,6 +85,7 @@ func New() *cobra.Command {
 			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --reason outdated
 			$ %[1]s 123 --author octocat --author hubot --reason resolved
 			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --undo
+			$ %[1]s list 123
 		`, displayName),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -71,19 +95,41 @@ func New() *cobra.Command {
 		SilenceErrors: true,
 	}
 
+	persistentFlags := cmd.PersistentFlags()
+	persistentFlags.StringVarP(&globalOpts.repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
+
 	flags := cmd.Flags()
 	flags.StringVar(&opts.id, "id", "", "Comment node ID")
 	flags.StringArrayVar(&opts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
 	flags.StringVar(&opts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
 	flags.StringVar(&opts.reason, "reason", "", fmt.Sprintf("Minimization reason (%s)", strings.Join(ghclient.AllowedReasons(), ", ")))
 	flags.BoolVar(&opts.undo, "undo", false, "Unminimize comments")
-	flags.StringVarP(&opts.repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
 	_ = cmd.RegisterFlagCompletionFunc("reason", func(*cobra.Command, []string, string) ([]string, cobra.ShellCompDirective) {
 		return ghclient.AllowedReasons(), cobra.ShellCompDirectiveNoFileComp
 	})
 	cmd.MarkFlagsMutuallyExclusive("id", "author")
 	cmd.MarkFlagsMutuallyExclusive("id", "body-grep")
 	cmd.MarkFlagsMutuallyExclusive("undo", "reason")
+
+	listCmd := &cobra.Command{
+		Use:   "list <issue-or-pr-number>",
+		Short: "List issue or review comments to find IDs",
+		Long:  "List issue or review comments so you can find comment IDs.",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runList(listOpts, args)
+		},
+		SilenceUsage:  true,
+		SilenceErrors: true,
+	}
+	listFlags := listCmd.Flags()
+	listFlags.StringArrayVar(&listOpts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
+	listFlags.StringVar(&listOpts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
+	listFlags.StringVar(&listOpts.jsonFields, "json", "", fmt.Sprintf("Output JSON with the specified fields (%s)", strings.Join(ghclient.CommentFields(), ",")))
+	listFlags.StringVar(&listOpts.jqExpression, "jq", "", "Filter JSON output using a jq expression")
+	listFlags.StringVar(&listOpts.tmpl, "template", "", "Format JSON output using a Go template")
+	listCmd.MarkFlagsMutuallyExclusive("jq", "template")
+	cmd.AddCommand(listCmd)
 
 	return cmd
 }
@@ -101,42 +147,22 @@ func run(opts *rootOptions, args []string) error {
 		return err
 	}
 
-	if opts.client == nil {
-		client, err := ghclient.New(nil)
-		if err != nil {
-			return fmt.Errorf("failed to create GitHub client: %w", err)
-		}
-		opts.client = client
+	client, err := ensureClient(opts.client)
+	if err != nil {
+		return err
 	}
+	opts.client = client
 
 	if opts.id != "" {
 		return applyAction(opts, []string{opts.id})
 	}
 
-	repo, err := options.ResolveRepository(opts.repo)
+	comments, err := loadFilteredComments(opts.client, opts.repoFlag(), args, opts.authors, opts.bodyGrep)
 	if err != nil {
 		return err
 	}
 
-	targetNumber, err := options.ResolveIssueOrPullRequestNumber(args)
-	if err != nil {
-		return err
-	}
-
-	var bodyRegex *regexp.Regexp
-	if opts.bodyGrep != "" {
-		bodyRegex, err = regexp.Compile(opts.bodyGrep)
-		if err != nil {
-			return fmt.Errorf("invalid --body-grep regex: %w", err)
-		}
-	}
-
-	comments, err := opts.client.FindIssueOrPullRequestComments(repo.Owner(), repo.Name(), targetNumber)
-	if err != nil {
-		return fmt.Errorf("failed to find comments: %w", err)
-	}
-
-	ids := filterCommentIDs(comments, opts.authors, bodyRegex, opts.undo)
+	ids := filterCommentIDs(comments, opts.undo)
 	return applyAction(opts, ids)
 }
 
@@ -171,16 +197,26 @@ func validateFlags(opts *rootOptions, args []string) error {
 	return nil
 }
 
-func filterCommentIDs(comments []ghclient.Comment, authors []string, bodyRegex *regexp.Regexp, undo bool) []string {
+func (opts *rootOptions) repoFlag() string {
+	if opts.global != nil {
+		return opts.global.repo
+	}
+
+	return ""
+}
+
+func (opts *listOptions) repoFlag() string {
+	if opts.global != nil {
+		return opts.global.repo
+	}
+
+	return ""
+}
+
+func filterCommentIDs(comments []ghclient.Comment, undo bool) []string {
 	ids := make([]string, 0, len(comments))
 
 	for _, comment := range comments {
-		if len(authors) > 0 && !matchesAuthor(comment.Author.Login, authors) {
-			continue
-		}
-		if bodyRegex != nil && !bodyRegex.MatchString(comment.Body) {
-			continue
-		}
 		if undo && !comment.IsMinimized {
 			continue
 		}

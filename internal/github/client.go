@@ -29,22 +29,28 @@ func NewWithClient(gql GraphQLClient) *Client {
 	return &Client{gql: gql}
 }
 
-type Comment struct {
-	ID              string `json:"id"`
-	Body            string `json:"bodyText"`
-	Author          Actor  `json:"author"`
-	IsMinimized     bool   `json:"isMinimized"`
-	MinimizedReason string `json:"minimizedReason"`
-}
-
-type Actor struct {
-	Login string `json:"login"`
-}
-
 func (c *Client) FindIssueOrPullRequestComments(owner, repo string, number int) ([]Comment, error) {
+	comments, isPullRequest, err := c.findIssueOrPullRequestComments(owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+	if !isPullRequest {
+		return comments, nil
+	}
+
+	reviewComments, err := c.findPullRequestReviewComments(owner, repo, number)
+	if err != nil {
+		return nil, err
+	}
+
+	return append(comments, reviewComments...), nil
+}
+
+func (c *Client) findIssueOrPullRequestComments(owner, repo string, number int) ([]Comment, bool, error) {
 	var (
-		comments  []Comment
-		endCursor string
+		comments      []Comment
+		endCursor     string
+		isPullRequest bool
 	)
 
 	for {
@@ -57,24 +63,105 @@ func (c *Client) FindIssueOrPullRequestComments(owner, repo string, number int) 
 			vars["endCursor"] = endCursor
 		}
 
-		var response struct {
-			Repository struct {
-				IssueOrPullRequest *struct {
-					Comments commentConnection `json:"comments"`
-				} `json:"issueOrPullRequest"`
-			} `json:"repository"`
-		}
+		var response commentsQueryResponse
 
 		if err := c.gql.Do(queryComments, vars, &response); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 
 		target := response.Repository.IssueOrPullRequest
 		if target == nil {
-			return nil, fmt.Errorf("issue or pull request #%d was not found", number)
+			return nil, false, fmt.Errorf("issue or pull request #%d was not found", number)
+		}
+		isPullRequest = targetIsPullRequest(target.TypeName)
+
+		for _, comment := range target.Comments.Nodes {
+			comments = append(comments, comment.Comment())
+		}
+		if !target.Comments.PageInfo.HasNextPage {
+			break
 		}
 
-		comments = append(comments, target.Comments.Nodes...)
+		endCursor = target.Comments.PageInfo.EndCursor
+	}
+
+	return comments, isPullRequest, nil
+}
+
+func (c *Client) findPullRequestReviewComments(owner, repo string, number int) ([]Comment, error) {
+	var (
+		comments     []Comment
+		threadCursor string
+	)
+
+	for {
+		vars := map[string]interface{}{
+			"owner":  owner,
+			"repo":   repo,
+			"number": number,
+		}
+		if threadCursor != "" {
+			vars["threadCursor"] = threadCursor
+		}
+
+		var response reviewThreadsQueryResponse
+		if err := c.gql.Do(queryReviewThreads, vars, &response); err != nil {
+			return nil, err
+		}
+
+		target := response.Repository.PullRequest
+		if target == nil {
+			return nil, fmt.Errorf("pull request #%d was not found", number)
+		}
+
+		for _, thread := range target.ReviewThreads.Nodes {
+			for _, comment := range thread.Comments.Nodes {
+				comments = append(comments, comment.Comment())
+			}
+			if thread.Comments.PageInfo.HasNextPage {
+				threadComments, err := c.findReviewThreadComments(thread.ID, thread.Comments.PageInfo.EndCursor)
+				if err != nil {
+					return nil, err
+				}
+				comments = append(comments, threadComments...)
+			}
+		}
+
+		if !target.ReviewThreads.PageInfo.HasNextPage {
+			break
+		}
+
+		threadCursor = target.ReviewThreads.PageInfo.EndCursor
+	}
+
+	return comments, nil
+}
+
+func (c *Client) findReviewThreadComments(id, endCursor string) ([]Comment, error) {
+	var comments []Comment
+
+	for {
+		vars := map[string]interface{}{
+			"id": id,
+		}
+		if endCursor != "" {
+			vars["endCursor"] = endCursor
+		}
+
+		var response reviewThreadCommentsQueryResponse
+		if err := c.gql.Do(queryReviewThreadComments, vars, &response); err != nil {
+			return nil, err
+		}
+
+		target := response.Node
+		if target == nil {
+			return nil, fmt.Errorf("review thread %s was not found", id)
+		}
+
+		for _, comment := range target.Comments.Nodes {
+			comments = append(comments, comment.Comment())
+		}
+
 		if !target.Comments.PageInfo.HasNextPage {
 			break
 		}
@@ -131,17 +218,58 @@ func (c *Client) UnminimizeComment(id string) error {
 }
 
 type commentConnection struct {
-	Nodes    []Comment `json:"nodes"`
+	Nodes    []graphqlComment `json:"nodes"`
 	PageInfo struct {
 		HasNextPage bool   `json:"hasNextPage"`
 		EndCursor   string `json:"endCursor"`
 	} `json:"pageInfo"`
 }
 
+type reviewThread struct {
+	ID       string            `json:"id"`
+	Comments commentConnection `json:"comments"`
+}
+
+type reviewThreadConnection struct {
+	Nodes    []reviewThread `json:"nodes"`
+	PageInfo struct {
+		HasNextPage bool   `json:"hasNextPage"`
+		EndCursor   string `json:"endCursor"`
+	} `json:"pageInfo"`
+}
+
+type commentsQueryResponse struct {
+	Repository struct {
+		IssueOrPullRequest *struct {
+			TypeName string            `json:"__typename"`
+			Comments commentConnection `json:"comments"`
+		} `json:"issueOrPullRequest"`
+	} `json:"repository"`
+}
+
+type reviewThreadsQueryResponse struct {
+	Repository struct {
+		PullRequest *struct {
+			ReviewThreads reviewThreadConnection `json:"reviewThreads"`
+		} `json:"pullRequest"`
+	} `json:"repository"`
+}
+
+type reviewThreadCommentsQueryResponse struct {
+	Node *struct {
+		Comments commentConnection `json:"comments"`
+	} `json:"node"`
+}
+
+func targetIsPullRequest(typeName string) bool {
+	return typeName == "PullRequest"
+}
+
 const queryComments = `
 query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 	repository(owner: $owner, name: $repo) {
 		issueOrPullRequest(number: $number) {
+			__typename
 			... on Issue {
 				comments(first: 100, after: $endCursor) {
 					nodes {
@@ -170,6 +298,59 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 						hasNextPage
 						endCursor
 					}
+				}
+			}
+		}
+	}
+}
+`
+
+const queryReviewThreads = `
+query($owner: String!, $repo: String!, $number: Int!, $threadCursor: String) {
+	repository(owner: $owner, name: $repo) {
+		pullRequest(number: $number) {
+			reviewThreads(first: 100, after: $threadCursor) {
+				nodes {
+					id
+					comments(first: 100) {
+						nodes {
+							id
+							author { login }
+							bodyText
+							isMinimized
+							minimizedReason
+						}
+						pageInfo {
+							hasNextPage
+							endCursor
+						}
+					}
+				}
+				pageInfo {
+					hasNextPage
+					endCursor
+				}
+			}
+		}
+	}
+}
+`
+
+const queryReviewThreadComments = `
+query($id: ID!, $endCursor: String) {
+	node(id: $id) {
+		... on PullRequestReviewThread {
+			comments(first: 100, after: $endCursor) {
+				nodes {
+					id
+					author { login }
+					bodyText
+					isMinimized
+					minimizedReason
+				}
+				pageInfo {
+					hasNextPage
+					endCursor
 				}
 			}
 		}
