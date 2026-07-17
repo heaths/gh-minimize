@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -33,26 +34,35 @@ type rootOptions struct {
 	client commentService
 }
 
+var executableName = func() string {
+	if len(os.Args) == 0 {
+		return "gh-minimize"
+	}
+
+	return filepath.Base(os.Args[0])
+}
+
 func New() *cobra.Command {
+	displayName := commandDisplayName()
 	opts := &rootOptions{
 		stdout: os.Stdout,
 		stderr: os.Stderr,
 	}
 
 	cmd := &cobra.Command{
-		Use:   "minimize [issue-or-pr-number]",
+		Use:   fmt.Sprintf("%s [issue-or-pr-number]", displayName),
 		Short: "Minimize or unminimize issue and pull request comments",
 		Long: heredoc.Doc(`
 			Minimize or unminimize issue and pull request comments by node ID
 			or by searching comment authors and body text.
 		`),
-		Example: heredoc.Doc(`
-			$ gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic
-			$ gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --undo
-			$ gh minimize 123 --author octocat --body-grep 'obsolete.*context' --reason outdated
-			$ gh minimize 123 --author octocat --author hubot --reason resolved
-			$ gh minimize 123 --author octocat --body-grep 'obsolete.*context' --undo
-		`),
+		Example: heredoc.Docf(`
+			$ %[1]s --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic
+			$ %[1]s --id MDEyOklzc3VlQ29tbWVudDE= --undo
+			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --reason outdated
+			$ %[1]s 123 --author octocat --author hubot --reason resolved
+			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --undo
+		`, displayName),
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return run(opts, args)
@@ -76,6 +86,14 @@ func New() *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("undo", "reason")
 
 	return cmd
+}
+
+func commandDisplayName() string {
+	if _, ok := os.LookupEnv("GH_EXTENSION"); ok {
+		return "gh minimize"
+	}
+
+	return executableName()
 }
 
 func run(opts *rootOptions, args []string) error {
