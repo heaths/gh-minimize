@@ -30,6 +30,7 @@ func TestFindIssueOrPullRequestComments(t *testing.T) {
 				}{
 					TypeName: "Issue",
 				}
+
 				resp.Repository.IssueOrPullRequest.Comments.Nodes = []graphqlComment{
 					{ID: "1", Author: &graphqlActor{Login: "octocat"}, BodyText: "hello"},
 					{ID: "2", BodyText: "goodbye"},
@@ -50,10 +51,43 @@ func TestFindIssueOrPullRequestComments(t *testing.T) {
 	require.Equal(t, Comment{ID: "2", Body: "goodbye"}, comments[1])
 }
 
-func TestParseCommentFields(t *testing.T) {
-	fields, err := ParseCommentFields("id, author,body")
+func TestFindIssueOrPullRequestComments_MapsAuthorType(t *testing.T) {
+	client := NewWithClient(&fakeGQLClient{
+		do: func(query string, vars map[string]interface{}, response interface{}) error {
+			switch query {
+			case queryComments:
+				resp := response.(*commentsQueryResponse)
+				resp.Repository.IssueOrPullRequest = &struct {
+					TypeName string            `json:"__typename"`
+					Comments commentConnection `json:"comments"`
+				}{
+					TypeName: "Issue",
+				}
+				resp.Repository.IssueOrPullRequest.Comments.Nodes = []graphqlComment{
+					{
+						ID:       "1",
+						Author:   &graphqlActor{TypeName: "Bot", Login: "dependabot[bot]"},
+						BodyText: "hello",
+					},
+				}
+				return nil
+			default:
+				return errors.New("unexpected query")
+			}
+		},
+	})
+
+	comments, err := client.FindIssueOrPullRequestComments("owner", "repo", 1)
 	require.NoError(t, err)
-	require.Equal(t, []string{"id", "author", "body"}, fields)
+	require.Equal(t, []Comment{
+		{ID: "1", Author: "dependabot[bot]", AuthorType: "bot", Body: "hello"},
+	}, comments)
+}
+
+func TestParseCommentFields(t *testing.T) {
+	fields, err := ParseCommentFields("id, author,authorType,body")
+	require.NoError(t, err)
+	require.Equal(t, []string{"id", "author", "authorType", "body"}, fields)
 }
 
 func TestExportComments_InvalidField(t *testing.T) {

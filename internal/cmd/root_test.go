@@ -329,6 +329,7 @@ func TestRunList_DefaultOutput(t *testing.T) {
 					{
 						ID:              "1",
 						Author:          "octocat",
+						AuthorType:      "user",
 						Body:            "hello",
 						IsMinimized:     true,
 						MinimizedReason: "OUTDATED",
@@ -340,7 +341,7 @@ func TestRunList_DefaultOutput(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"id":"1","author":"octocat","body":"hello","isMinimized":true,"minimizedReason":"OUTDATED"}]`, out.String())
+	require.JSONEq(t, `[{"id":"1","author":"octocat","authorType":"user","body":"hello","isMinimized":true,"minimizedReason":"OUTDATED"}]`, out.String())
 }
 
 func TestRunList_JQOutput(t *testing.T) {
@@ -355,6 +356,7 @@ func TestRunList_JQOutput(t *testing.T) {
 					{
 						ID:              "1",
 						Author:          "octocat",
+						AuthorType:      "user",
 						Body:            "hello",
 						IsMinimized:     true,
 						MinimizedReason: "OUTDATED",
@@ -381,6 +383,7 @@ func TestRunList_SelectedJSONFields(t *testing.T) {
 					{
 						ID:              "1",
 						Author:          "octocat",
+						AuthorType:      "user",
 						Body:            "hello",
 						IsMinimized:     true,
 						MinimizedReason: "OUTDATED",
@@ -393,6 +396,31 @@ func TestRunList_SelectedJSONFields(t *testing.T) {
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
 	require.JSONEq(t, `[{"id":"1","author":"octocat"}]`, out.String())
+}
+
+func TestRunList_SelectedJSONFieldsAuthorType(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+	opts := &listOptions{
+		jsonFields: "id,authorType",
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: &mockService{
+				comments: []ghclient.Comment{
+					{
+						ID:         "1",
+						Author:     "dependabot[bot]",
+						AuthorType: "bot",
+						Body:       "hello",
+					},
+				},
+			},
+		},
+	}
+
+	err := runList(opts, []string{"123"})
+	require.NoError(t, err)
+	require.JSONEq(t, `[{"id":"1","authorType":"bot"}]`, out.String())
 }
 
 func TestRunList_FilteredOutput(t *testing.T) {
@@ -408,7 +436,7 @@ func TestRunList_FilteredOutput(t *testing.T) {
 			client: &mockService{
 				comments: []ghclient.Comment{
 					{ID: "1", Author: "octocat", Body: "old context"},
-					{ID: "2", Author: "hubot", Body: "old context"},
+					{ID: "2", Author: "hubot", AuthorType: "bot", Body: "old context"},
 					{ID: "3", Author: "hubot", Body: "new context"},
 				},
 			},
@@ -417,7 +445,7 @@ func TestRunList_FilteredOutput(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"id":"2","author":"hubot","body":"old context","isMinimized":false,"minimizedReason":""}]`, out.String())
+	require.JSONEq(t, `[{"id":"2","author":"hubot","authorType":"bot","body":"old context","isMinimized":false,"minimizedReason":""}]`, out.String())
 }
 
 func TestWriteCommentOutput_PrettyPrintsJSON(t *testing.T) {
@@ -446,6 +474,21 @@ func TestWriteCommentOutput_DoesNotPrettyPrintTemplate(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Equal(t, "octocat", out.String())
+}
+
+func TestWriteCommentOutput_TemplateCanAccessAuthorType(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+	io.SetStdoutTTY(true)
+	io.SetColorEnabled(false)
+
+	err := writeCommentOutput(&listOptions{
+		commonOptions: commonOptions{io: io},
+		tmpl:          "{{range .}}{{.authorType}}{{end}}",
+	}, []ghclient.Comment{
+		{ID: "1", Author: "dependabot[bot]", AuthorType: "bot", Body: "hello"},
+	})
+	require.NoError(t, err)
+	require.Equal(t, "bot", out.String())
 }
 
 func TestLoadFilteredComments_InvalidRegex(t *testing.T) {
