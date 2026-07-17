@@ -1,10 +1,12 @@
 # AGENTS
 
 ## Purpose
+
 - `gh minimize` minimizes or unminimizes issue/PR comments
 - target by `--id` or by comment search in a specific issue/PR
 
 ## Stack and conventions
+
 - language Go
 - CLI framework `spf13/cobra`
 - GitHub integration prefer `go-gh` and GitHub GraphQL
@@ -13,6 +15,7 @@
 - keep this file concise to reduce tokens but stay human-reviewable
 
 ## Command rules
+
 - forms
   - `gh minimize --id <node-id> --reason <reason>`
   - `gh minimize --id <node-id> --undo`
@@ -28,6 +31,7 @@
 - `-R/--repo` supports `[HOST/]OWNER/REPO` else current repo
 
 ## Reason values
+
 - `abuse`
 - `duplicate`
 - `low-quality`
@@ -37,6 +41,7 @@
 - `spam`
 
 ## Architecture
+
 - `main.go` CLI entrypoint executes cobra root command
 - `internal/cmd/root.go` command wiring flag validation filtering action flow
 - `internal/options/options.go` repo parsing and issue/PR number parsing
@@ -46,6 +51,7 @@
   - mutate via `minimizeComment` and `unminimizeComment`
 
 ## Testing and tooling
+
 - format with `gofmt`
 - manage deps with `go mod tidy`
 - run tests with `go test ./...`
@@ -55,6 +61,7 @@
   - `internal/github/*_test.go`
 
 ## Output behavior
+
 - print summary only
   - `No matching comments found.`
   - `Minimized N comment(s).`
