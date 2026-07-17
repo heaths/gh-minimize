@@ -230,6 +230,58 @@ func TestFilterCommentIDs(t *testing.T) {
 	require.Equal(t, []string{"2"}, gotUndo)
 }
 
+func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+	mock := &mockService{
+		comments: []ghclient.Comment{
+			{ID: "1", Author: "octocat", Body: "old context", IsMinimized: false},
+			{ID: "2", Author: "octocat", Body: "old context", IsMinimized: true},
+		},
+	}
+	opts := &rootOptions{
+		reason: "outdated",
+		filterOptions: filterOptions{
+			authors: []string{"octocat"},
+		},
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: mock,
+		},
+	}
+
+	err := run(opts, []string{"123"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"1:OUTDATED"}, mock.minimized)
+	require.Contains(t, out.String(), "Minimized 1 comment(s).")
+}
+
+func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
+	io, _, out, _ := iostreams.Test()
+	mock := &mockService{
+		comments: []ghclient.Comment{
+			{ID: "1", Author: "octocat", Body: "old context", IsMinimized: true},
+			{ID: "2", Author: "octocat", Body: "old context", IsMinimized: false},
+		},
+	}
+	opts := &rootOptions{
+		undo: true,
+		filterOptions: filterOptions{
+			authors: []string{"octocat"},
+		},
+		commonOptions: commonOptions{
+			io:     io,
+			global: &globalOptions{repo: "OWNER/REPO"},
+			client: mock,
+		},
+	}
+
+	err := run(opts, []string{"123"})
+	require.NoError(t, err)
+	require.Equal(t, []string{"1"}, mock.unminimized)
+	require.Contains(t, out.String(), "Unminimized 1 comment(s).")
+}
+
 func TestApplyAction_Minimize(t *testing.T) {
 	io, _, out, _ := iostreams.Test()
 	mock := &mockService{}
