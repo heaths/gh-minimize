@@ -25,6 +25,7 @@ gh minimize list 123
 gh minimize list 123 --author octocat --author hubot --body-grep 'obsolete.*context'
 gh minimize list 123 --json id,author,isMinimized
 gh minimize list 123 --jq '.[].author'
+gh minimize list 123 --jq '[.[] | select(.authorType == "bot")]'
 gh minimize list 123 --template '{{range .}}{{printf "%s\t%t\n" .author .isMinimized}}{{end}}'
 ```
 

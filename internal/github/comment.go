@@ -9,6 +9,7 @@ import (
 var commentFields = []string{
 	"id",
 	"author",
+	"authorType",
 	"body",
 	"isMinimized",
 	"minimizedReason",
@@ -17,6 +18,7 @@ var commentFields = []string{
 type Comment struct {
 	ID              string `json:"id"`
 	Author          string `json:"author"`
+	AuthorType      string `json:"authorType"`
 	Body            string `json:"body"`
 	IsMinimized     bool   `json:"isMinimized"`
 	MinimizedReason string `json:"minimizedReason"`
@@ -31,7 +33,8 @@ type graphqlComment struct {
 }
 
 type graphqlActor struct {
-	Login string `json:"login"`
+	TypeName string `json:"__typename"`
+	Login    string `json:"login"`
 }
 
 func (c graphqlComment) Comment() Comment {
@@ -43,6 +46,7 @@ func (c graphqlComment) Comment() Comment {
 	}
 	if c.Author != nil {
 		comment.Author = c.Author.Login
+		comment.AuthorType = strings.ToLower(c.Author.TypeName)
 	}
 
 	return comment
@@ -96,6 +100,8 @@ func (c Comment) ExportData(fields []string) (map[string]interface{}, error) {
 			data[field] = c.Author
 		case "body":
 			data[field] = c.Body
+		case "authorType":
+			data[field] = c.AuthorType
 		case "isMinimized":
 			data[field] = c.IsMinimized
 		case "minimizedReason":

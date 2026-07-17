@@ -268,7 +268,10 @@ func targetIsPullRequest(typeName string) bool {
 const fragments = `
 fragment comment on Comment {
 	id
-	author { login }
+	author {
+		__typename
+		login
+	}
 	bodyText
 }
 
