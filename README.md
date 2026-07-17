@@ -57,6 +57,32 @@ Valid `--reason` values:
 * `resolved`
 * `spam`
 
+### GitHub Actions
+
+You can use this extension in an `issue_comment` (used for both issues and pull requests) workflow with only the permissions needed to minimize comments:
+
+```yaml
+on:
+  issue_comment:
+    types:
+    - created
+    - edited
+
+permissions:
+  pull-requests: write
+
+jobs:
+  minimize:
+    if: ${{ github.event.issue.pull_request }}
+    runs-on: ubuntu-latest
+    steps:
+    - run: |
+        gh ext install heaths/gh-minimize
+        gh minimize ${{ github.event.pull_request.number }} --author github-actions --body-grep 'new changes have been pushed to this pull request' --reason outdated
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+```
+
 ## License
 
 Licensed under the [MIT](LICENSE.txt) license.
