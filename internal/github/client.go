@@ -265,7 +265,20 @@ func targetIsPullRequest(typeName string) bool {
 	return typeName == "PullRequest"
 }
 
-const queryComments = `
+const fragments = `
+fragment comment on Comment {
+	id
+	author { login }
+	bodyText
+}
+
+fragment minimizable on Minimizable {
+	isMinimized
+	minimizedReason
+}
+`
+
+const queryComments = fragments + `
 query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 	repository(owner: $owner, name: $repo) {
 		issueOrPullRequest(number: $number) {
@@ -273,11 +286,8 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 			... on Issue {
 				comments(first: 100, after: $endCursor) {
 					nodes {
-						id
-						author { login }
-						bodyText
-						isMinimized
-						minimizedReason
+						...comment
+						...minimizable
 					}
 					pageInfo {
 						hasNextPage
@@ -288,11 +298,8 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 			... on PullRequest {
 				comments(first: 100, after: $endCursor) {
 					nodes {
-						id
-						author { login }
-						bodyText
-						isMinimized
-						minimizedReason
+						...comment
+						...minimizable
 					}
 					pageInfo {
 						hasNextPage
@@ -305,7 +312,7 @@ query($owner: String!, $repo: String!, $number: Int!, $endCursor: String) {
 }
 `
 
-const queryReviewThreads = `
+const queryReviewThreads = fragments + `
 query($owner: String!, $repo: String!, $number: Int!, $threadCursor: String) {
 	repository(owner: $owner, name: $repo) {
 		pullRequest(number: $number) {
@@ -314,11 +321,8 @@ query($owner: String!, $repo: String!, $number: Int!, $threadCursor: String) {
 					id
 					comments(first: 100) {
 						nodes {
-							id
-							author { login }
-							bodyText
-							isMinimized
-							minimizedReason
+							...comment
+							...minimizable
 						}
 						pageInfo {
 							hasNextPage
@@ -336,17 +340,14 @@ query($owner: String!, $repo: String!, $number: Int!, $threadCursor: String) {
 }
 `
 
-const queryReviewThreadComments = `
+const queryReviewThreadComments = fragments + `
 query($id: ID!, $endCursor: String) {
 	node(id: $id) {
 		... on PullRequestReviewThread {
 			comments(first: 100, after: $endCursor) {
 				nodes {
-					id
-					author { login }
-					bodyText
-					isMinimized
-					minimizedReason
+					...comment
+					...minimizable
 				}
 				pageInfo {
 					hasNextPage
