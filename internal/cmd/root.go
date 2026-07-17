@@ -120,10 +120,10 @@ func NewWithIO(streams *iostreams.IOStreams) *cobra.Command {
 	cmd.MarkFlagsMutuallyExclusive("undo", "reason")
 
 	listCmd := &cobra.Command{
-		Use:   "list <issue-or-pr-number>",
+		Use:   "list [issue-or-pr-number]",
 		Short: "List issue or review comments to find IDs",
 		Long:  "List issue or review comments so you can find comment IDs.",
-		Args:  positionalIssueOrPullRequestArgs(true),
+		Args:  positionalIssueOrPullRequestArgs(false),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return runList(listOpts, args)
 		},
@@ -160,7 +160,7 @@ func positionalIssueOrPullRequestArgs(required bool) cobra.PositionalArgs {
 			return nil
 		}
 
-		_, err := options.ResolveIssueOrPullRequestNumber(args)
+		_, err := options.ResolveIssueOrPullRequestNumber(args, "")
 		return err
 	}
 }
@@ -220,9 +220,6 @@ func validateFlags(opts *rootOptions, args []string) error {
 	}
 	if len(opts.authors) == 0 && opts.bodyGrep == "" {
 		return fmt.Errorf("at least one of --author or --body-grep is required when --id is not provided")
-	}
-	if len(args) != 1 {
-		return fmt.Errorf("exactly one issue or pull request number argument is required when --id is not provided")
 	}
 
 	return nil

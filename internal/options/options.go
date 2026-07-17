@@ -8,7 +8,10 @@ import (
 
 	"github.com/cli/go-gh"
 	"github.com/cli/go-gh/pkg/repository"
+	ghclient "github.com/heaths/gh-minimize/internal/github"
 )
+
+var resolveCurrentPullRequestNumber = ghclient.CurrentPullRequestNumber
 
 func ResolveRepository(repoFlag string) (repository.Repository, error) {
 	if repoFlag != "" {
@@ -28,8 +31,14 @@ func ResolveRepository(repoFlag string) (repository.Repository, error) {
 	return repo, nil
 }
 
-func ResolveIssueOrPullRequestNumber(args []string) (int, error) {
+func ResolveIssueOrPullRequestNumber(args []string, repoFlag string) (int, error) {
 	switch len(args) {
+	case 0:
+		number, err := resolveCurrentPullRequestNumber(repoFlag)
+		if err != nil {
+			return 0, fmt.Errorf("issue or pull request number is required: %w", err)
+		}
+		return number, nil
 	case 1:
 		return ParseNumber(args[0])
 	default:

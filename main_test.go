@@ -7,14 +7,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestRun_PrintsCobraError(t *testing.T) {
+func TestRun_PrintsRuntimeResolutionError(t *testing.T) {
 	streams, _, stdout, stderr := iostreams.Test()
 
-	code := run([]string{"list"}, streams)
+	code := run([]string{"list", "--repo", "@"}, streams)
 
 	require.Equal(t, 1, code)
 	require.Empty(t, stdout.String())
-	require.Contains(t, stderr.String(), "accepts 1 arg(s), received 0")
+	require.Contains(t, stderr.String(), "invalid repository")
 }
 
 func TestRun_PrintsInvalidNumberError(t *testing.T) {
