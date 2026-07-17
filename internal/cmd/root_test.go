@@ -9,6 +9,7 @@ import (
 
 	"github.com/cli/cli/v2/pkg/iostreams"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
 )
 
@@ -159,6 +160,58 @@ func TestNew_UsesExecutableNameOutsideGh(t *testing.T) {
 
 	require.Equal(t, "gh-minimize [issue-or-pr-number]", cmd.Use)
 	require.Contains(t, cmd.Example, "$ gh-minimize --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic")
+}
+
+func TestPositionalIssueOrPullRequestArgs(t *testing.T) {
+	tests := []struct {
+		name     string
+		required bool
+		args     []string
+		wantErr  string
+	}{
+		{
+			name:     "optional accepts plain number",
+			required: false,
+			args:     []string{"42"},
+		},
+		{
+			name:     "optional accepts hash-prefixed number",
+			required: false,
+			args:     []string{"#42"},
+		},
+		{
+			name:     "required accepts plain number",
+			required: true,
+			args:     []string{"42"},
+		},
+		{
+			name:     "required accepts hash-prefixed number",
+			required: true,
+			args:     []string{"#42"},
+		},
+		{
+			name:     "required rejects missing arg",
+			required: true,
+			wantErr:  "accepts 1 arg(s), received 0",
+		},
+		{
+			name:     "rejects non-number",
+			required: false,
+			args:     []string{"foo"},
+			wantErr:  `invalid issue or pull request number "foo"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := positionalIssueOrPullRequestArgs(tt.required)(&cobra.Command{}, tt.args)
+			if tt.wantErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tt.wantErr)
+			}
+		})
+	}
 }
 
 func TestFilterCommentIDs(t *testing.T) {
