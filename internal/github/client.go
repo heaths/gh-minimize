@@ -4,8 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/cli/go-gh"
-	"github.com/cli/go-gh/pkg/api"
+	"github.com/cli/go-gh/v2/pkg/api"
 )
 
 type GraphQLClient interface {
@@ -17,7 +16,7 @@ type Client struct {
 }
 
 func New(log io.Writer) (*Client, error) {
-	gql, err := gh.GQLClient(&api.ClientOptions{Log: log})
+	gql, err := api.NewGraphQLClient(api.ClientOptions{Log: log})
 	if err != nil {
 		return nil, err
 	}

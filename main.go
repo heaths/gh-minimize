@@ -7,19 +7,19 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/cli/cli/v2/pkg/iostreams"
+	"github.com/cli/go-gh/v2/pkg/term"
 	"github.com/heaths/gh-minimize/internal/cmd"
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], iostreams.System()))
+	os.Exit(run(os.Args[1:], term.FromEnv()))
 }
 
-func run(args []string, streams *iostreams.IOStreams) int {
-	root := cmd.NewWithIO(streams)
+func run(args []string, terminal term.Term) int {
+	root := cmd.NewWithTerm(terminal)
 	root.SetArgs(args)
 	if err := root.Execute(); err != nil {
-		_, _ = fmt.Fprintln(streams.ErrOut, err)
+		_, _ = fmt.Fprintln(terminal.ErrOut(), err)
 		return 1
 	}
 

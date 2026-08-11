@@ -3,11 +3,12 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"regexp"
 	"testing"
 
-	"github.com/cli/cli/v2/pkg/iostreams"
+	"github.com/cli/go-gh/v2/pkg/term"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/require"
@@ -230,7 +231,7 @@ func TestFilterCommentIDs(t *testing.T) {
 }
 
 func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	mock := &mockService{
 		comments: []ghclient.Comment{
 			{ID: "1", Author: "octocat", Body: "old context", IsMinimized: false},
@@ -243,7 +244,7 @@ func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
 			authors: []string{"octocat"},
 		},
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: mock,
 		},
@@ -252,11 +253,11 @@ func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
 	err := run(opts, []string{"123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"1:OUTDATED"}, mock.minimized)
-	require.Contains(t, out.String(), "Minimized 1 comment(s).")
+	require.Contains(t, fileString(t, stdout), "Minimized 1 comment(s).")
 }
 
 func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	mock := &mockService{
 		comments: []ghclient.Comment{
 			{ID: "1", Author: "octocat", Body: "old context", IsMinimized: true},
@@ -269,7 +270,7 @@ func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
 			authors: []string{"octocat"},
 		},
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: mock,
 		},
@@ -278,16 +279,16 @@ func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
 	err := run(opts, []string{"123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"1"}, mock.unminimized)
-	require.Contains(t, out.String(), "Unminimized 1 comment(s).")
+	require.Contains(t, fileString(t, stdout), "Unminimized 1 comment(s).")
 }
 
 func TestApplyAction_Minimize(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	mock := &mockService{}
 	opts := &rootOptions{
 		reason: "off-topic",
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			client: mock,
 		},
 	}
@@ -295,11 +296,11 @@ func TestApplyAction_Minimize(t *testing.T) {
 	err := applyAction(opts, []string{"a", "b"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"a:OFF_TOPIC", "b:OFF_TOPIC"}, mock.minimized)
-	require.Contains(t, out.String(), "Minimized 2 comment(s).")
+	require.Contains(t, fileString(t, stdout), "Minimized 2 comment(s).")
 }
 
 func TestApplyAction_UnminimizeError(t *testing.T) {
-	io, _, _, _ := iostreams.Test()
+	terminal, _, _ := testTerminal(t, false, false)
 	mock := &mockService{
 		unminimizeErrByID: map[string]error{
 			"a": errors.New("boom"),
@@ -308,7 +309,7 @@ func TestApplyAction_UnminimizeError(t *testing.T) {
 	opts := &rootOptions{
 		undo: true,
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			client: mock,
 		},
 	}
@@ -318,10 +319,10 @@ func TestApplyAction_UnminimizeError(t *testing.T) {
 }
 
 func TestRunList_DefaultOutput(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	opts := &listOptions{
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: &mockService{
 				comments: []ghclient.Comment{
@@ -340,15 +341,15 @@ func TestRunList_DefaultOutput(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"id":"1","author":"octocat","authorType":"user","body":"hello","isMinimized":true,"minimizedReason":"OUTDATED"}]`, out.String())
+	require.JSONEq(t, `[{"id":"1","author":"octocat","authorType":"user","body":"hello","isMinimized":true,"minimizedReason":"OUTDATED"}]`, fileString(t, stdout))
 }
 
 func TestRunList_JQOutput(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	opts := &listOptions{
 		jqExpression: ".[].author",
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: &mockService{
 				comments: []ghclient.Comment{
@@ -367,15 +368,15 @@ func TestRunList_JQOutput(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.Equal(t, "octocat\n", out.String())
+	require.Equal(t, "octocat\n", fileString(t, stdout))
 }
 
 func TestRunList_SelectedJSONFields(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	opts := &listOptions{
 		jsonFields: "id,author",
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: &mockService{
 				comments: []ghclient.Comment{
@@ -394,15 +395,15 @@ func TestRunList_SelectedJSONFields(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"id":"1","author":"octocat"}]`, out.String())
+	require.JSONEq(t, `[{"id":"1","author":"octocat"}]`, fileString(t, stdout))
 }
 
 func TestRunList_SelectedJSONFieldsAuthorType(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	opts := &listOptions{
 		jsonFields: "id,authorType",
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: &mockService{
 				comments: []ghclient.Comment{
@@ -419,18 +420,18 @@ func TestRunList_SelectedJSONFieldsAuthorType(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"id":"1","authorType":"bot"}]`, out.String())
+	require.JSONEq(t, `[{"id":"1","authorType":"bot"}]`, fileString(t, stdout))
 }
 
 func TestRunList_FilteredOutput(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
+	terminal, stdout, _ := testTerminal(t, false, false)
 	opts := &listOptions{
 		filterOptions: filterOptions{
 			authors:  []string{"hubot"},
 			bodyGrep: "old",
 		},
 		commonOptions: commonOptions{
-			io:     io,
+			term:   terminal,
 			global: &globalOptions{repo: "OWNER/REPO"},
 			client: &mockService{
 				comments: []ghclient.Comment{
@@ -444,50 +445,45 @@ func TestRunList_FilteredOutput(t *testing.T) {
 
 	err := runList(opts, []string{"123"})
 	require.NoError(t, err)
-	require.JSONEq(t, `[{"id":"2","author":"hubot","authorType":"bot","body":"old context","isMinimized":false,"minimizedReason":""}]`, out.String())
+	require.JSONEq(t, `[{"id":"2","author":"hubot","authorType":"bot","body":"old context","isMinimized":false,"minimizedReason":""}]`, fileString(t, stdout))
 }
 
 func TestWriteCommentOutput_PrettyPrintsJSON(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
-	io.SetStdoutTTY(true)
-	io.SetColorEnabled(false)
+	terminal, stdout, _ := testTerminal(t, true, false)
 
-	err := writeCommentOutput(&listOptions{commonOptions: commonOptions{io: io}}, []ghclient.Comment{
+	err := writeCommentOutput(&listOptions{commonOptions: commonOptions{term: terminal}}, []ghclient.Comment{
 		{ID: "1", Author: "octocat", Body: "hello"},
 	})
 	require.NoError(t, err)
-	require.Contains(t, out.String(), "\n  {\n")
-	require.Contains(t, out.String(), `"author": "octocat"`)
+	output := fileString(t, stdout)
+	require.Contains(t, output, "\n  {\n")
+	require.Contains(t, output, `"author": "octocat"`)
 }
 
 func TestWriteCommentOutput_DoesNotPrettyPrintTemplate(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
-	io.SetStdoutTTY(true)
-	io.SetColorEnabled(false)
+	terminal, stdout, _ := testTerminal(t, true, false)
 
 	err := writeCommentOutput(&listOptions{
-		commonOptions: commonOptions{io: io},
+		commonOptions: commonOptions{term: terminal},
 		tmpl:          "{{range .}}{{.author}}{{end}}",
 	}, []ghclient.Comment{
 		{ID: "1", Author: "octocat", Body: "hello"},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "octocat", out.String())
+	require.Equal(t, "octocat", fileString(t, stdout))
 }
 
 func TestWriteCommentOutput_TemplateCanAccessAuthorType(t *testing.T) {
-	io, _, out, _ := iostreams.Test()
-	io.SetStdoutTTY(true)
-	io.SetColorEnabled(false)
+	terminal, stdout, _ := testTerminal(t, true, false)
 
 	err := writeCommentOutput(&listOptions{
-		commonOptions: commonOptions{io: io},
+		commonOptions: commonOptions{term: terminal},
 		tmpl:          "{{range .}}{{.authorType}}{{end}}",
 	}, []ghclient.Comment{
 		{ID: "1", Author: "dependabot[bot]", AuthorType: "bot", Body: "hello"},
 	})
 	require.NoError(t, err)
-	require.Equal(t, "bot", out.String())
+	require.Equal(t, "bot", fileString(t, stdout))
 }
 
 func TestLoadFilteredComments_InvalidRegex(t *testing.T) {
@@ -508,4 +504,48 @@ func TestLoadFilteredComments_FiltersPageableResults(t *testing.T) {
 		{ID: "1", Author: "octocat", Body: "keep this"},
 		{ID: "3", Author: "octocat", Body: "keep that"},
 	}, comments)
+}
+
+func testTerminal(t *testing.T, tty bool, colorEnabled bool) (term.Term, *os.File, *os.File) {
+	t.Helper()
+
+	stdout, err := os.CreateTemp(t.TempDir(), "stdout")
+	require.NoError(t, err)
+	stderr, err := os.CreateTemp(t.TempDir(), "stderr")
+	require.NoError(t, err)
+
+	originalStdout, originalStderr := os.Stdout, os.Stderr
+	os.Stdout, os.Stderr = stdout, stderr
+	t.Cleanup(func() {
+		os.Stdout, os.Stderr = originalStdout, originalStderr
+		if err := stdout.Close(); err != nil {
+			t.Errorf("closing stdout temp file: %v", err)
+		}
+		if err := stderr.Close(); err != nil {
+			t.Errorf("closing stderr temp file: %v", err)
+		}
+	})
+
+	t.Setenv("GH_FORCE_TTY", "")
+	t.Setenv("CLICOLOR", "")
+	t.Setenv("CLICOLOR_FORCE", "")
+	t.Setenv("NO_COLOR", "1")
+	if tty {
+		t.Setenv("GH_FORCE_TTY", "80")
+	}
+	if colorEnabled {
+		t.Setenv("NO_COLOR", "")
+	}
+
+	return term.FromEnv(), stdout, stderr
+}
+
+func fileString(t *testing.T, file *os.File) string {
+	t.Helper()
+
+	_, err := file.Seek(0, io.SeekStart)
+	require.NoError(t, err)
+	data, err := io.ReadAll(file)
+	require.NoError(t, err)
+	return string(data)
 }

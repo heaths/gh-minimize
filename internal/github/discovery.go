@@ -4,13 +4,14 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os/exec"
+	"strings"
 
-	"github.com/cli/cli/v2/git"
 	ghrepo "github.com/cli/go-gh/v2/pkg/repository"
 )
 
 var (
-	resolveCurrentBranch     = func() (string, error) { return (&git.Client{}).CurrentBranch(context.Background()) }
+	resolveCurrentBranch     = func() (string, error) { return currentBranch(context.Background()) }
 	resolveCurrentRepository = ghrepo.Current
 	newDiscoveryClient       = func() (*Client, error) { return New(nil) }
 )
@@ -59,6 +60,20 @@ func pullRequestNumberForBranch(branch string, repo ghrepo.Repository) (int, err
 	}
 
 	return client.PullRequestNumberForBranch(repo.Owner, repo.Name, branch)
+}
+
+func currentBranch(ctx context.Context) (string, error) {
+	output, err := exec.CommandContext(ctx, "git", "branch", "--show-current").Output()
+	if err != nil {
+		return "", err
+	}
+
+	branch := strings.TrimSpace(string(output))
+	if branch == "" {
+		return "", errors.New("not on branch")
+	}
+
+	return branch, nil
 }
 
 func (c *Client) PullRequestNumberForBranch(owner, repo, branch string) (int, error) {

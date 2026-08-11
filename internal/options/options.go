@@ -6,8 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/cli/go-gh"
-	"github.com/cli/go-gh/pkg/repository"
+	"github.com/cli/go-gh/v2/pkg/repository"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 )
 
@@ -17,15 +16,15 @@ func ResolveRepository(repoFlag string) (repository.Repository, error) {
 	if repoFlag != "" {
 		repo, err := repository.Parse(repoFlag)
 		if err != nil {
-			return nil, fmt.Errorf("invalid repository: %w", err)
+			return repository.Repository{}, fmt.Errorf("invalid repository: %w", err)
 		}
 
 		return repo, nil
 	}
 
-	repo, err := gh.CurrentRepository()
+	repo, err := repository.Current()
 	if err != nil {
-		return nil, fmt.Errorf("could not determine repository; pass --repo OWNER/REPO: %w", err)
+		return repository.Repository{}, fmt.Errorf("could not determine repository; pass --repo OWNER/REPO: %w", err)
 	}
 
 	return repo, nil
@@ -57,9 +56,9 @@ func ParseNumber(number string) (int, error) {
 }
 
 func RepoArgument(repo repository.Repository) string {
-	if repo.Host() == "" || repo.Host() == "github.com" {
-		return fmt.Sprintf("%s/%s", repo.Owner(), repo.Name())
+	if repo.Host == "" || repo.Host == "github.com" {
+		return fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
 	}
 
-	return fmt.Sprintf("%s/%s/%s", repo.Host(), repo.Owner(), repo.Name())
+	return fmt.Sprintf("%s/%s/%s", repo.Host, repo.Owner, repo.Name)
 }

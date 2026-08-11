@@ -6,10 +6,10 @@ import (
 	"io"
 	"regexp"
 
-	"github.com/cli/cli/v2/pkg/iostreams"
-	ghjq "github.com/cli/go-gh/pkg/jq"
-	"github.com/cli/go-gh/pkg/jsonpretty"
-	ghtemplate "github.com/cli/go-gh/pkg/template"
+	ghjq "github.com/cli/go-gh/v2/pkg/jq"
+	"github.com/cli/go-gh/v2/pkg/jsonpretty"
+	ghtemplate "github.com/cli/go-gh/v2/pkg/template"
+	"github.com/cli/go-gh/v2/pkg/term"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 )
 
@@ -36,7 +36,7 @@ func writeCommentOutput(opts *listOptions, comments []ghclient.Comment) error {
 	reader := bytes.NewReader(data)
 	switch {
 	case opts.tmpl != "":
-		tmpl := ghtemplate.New(opts.io.Out, opts.io.TerminalWidth(), opts.io.ColorEnabled())
+		tmpl := ghtemplate.New(opts.term.Out(), terminalWidth(opts.term), opts.term.IsColorEnabled())
 		if err := tmpl.Parse(opts.tmpl); err != nil {
 			return err
 		}
@@ -45,9 +45,9 @@ func writeCommentOutput(opts *listOptions, comments []ghclient.Comment) error {
 		}
 		return tmpl.Flush()
 	case opts.jqExpression != "":
-		return ghjq.Evaluate(reader, opts.io.Out, opts.jqExpression)
+		return ghjq.Evaluate(reader, opts.term.Out(), opts.jqExpression)
 	default:
-		return writeJSONOutput(opts.io, reader)
+		return writeJSONOutput(opts.term, reader)
 	}
 }
 
@@ -97,23 +97,32 @@ func marshalJSON(v interface{}) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-func writeJSONOutput(streams *iostreams.IOStreams, input io.Reader) error {
-	if err := prettyPrintJSONOutput(streams, input); err == nil {
+func writeJSONOutput(terminal term.Term, input io.Reader) error {
+	if err := prettyPrintJSONOutput(terminal, input); err == nil {
 		return nil
 	}
 
-	_, err := io.Copy(streams.Out, input)
+	_, err := io.Copy(terminal.Out(), input)
 	return err
 }
 
-func prettyPrintJSONOutput(streams *iostreams.IOStreams, input io.Reader) error {
-	if streams == nil || !streams.IsStdoutTTY() {
+func prettyPrintJSONOutput(terminal term.Term, input io.Reader) error {
+	if !terminal.IsTerminalOutput() {
 		return ioCopyUnsupported{}
 	}
 
-	return jsonpretty.Format(streams.Out, input, "  ", streams.ColorEnabled())
+	return jsonpretty.Format(terminal.Out(), input, "  ", terminal.IsColorEnabled())
 }
 
 type ioCopyUnsupported struct{}
 
 func (ioCopyUnsupported) Error() string { return "pretty JSON output is not supported" }
+
+func terminalWidth(terminal term.Term) int {
+	width, _, err := terminal.Size()
+	if err == nil && width > 0 {
+		return width
+	}
+
+	return 80
+}

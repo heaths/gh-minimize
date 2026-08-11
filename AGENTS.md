@@ -9,7 +9,9 @@
 
 - language Go
 - CLI framework `spf13/cobra`
-- GitHub integration prefer `go-gh` and GitHub GraphQL
+- GitHub integration prefer `github.com/cli/go-gh/v2` and GitHub GraphQL
+- do not add `github.com/cli/cli` as a module dependency
+- use `github.com/cli/go-gh/v2/pkg/term` instead of `iostreams`
 - follow idiomatic Go style and stdlib-first design
 - keep changes small explicit typed and testable
 - keep this file concise to reduce tokens but stay human-reviewable
@@ -47,6 +49,8 @@
 - `internal/options/options.go` repo parsing and issue/PR number parsing
 - `internal/github/classifier.go` reason mapping to GraphQL enum
 - `internal/github/client.go` GraphQL query and mutations
+- `internal/github/discovery.go` resolves current branch with `git` and
+  looks up the current PR with GraphQL
   - query comments via `repository -> issueOrPullRequest -> comments`
   - mutate via `minimizeComment` and `unminimizeComment`
 

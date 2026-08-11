@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/MakeNowJust/heredoc"
-	"github.com/cli/cli/v2/pkg/iostreams"
+	"github.com/cli/go-gh/v2/pkg/term"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 	"github.com/heaths/gh-minimize/internal/options"
 	"github.com/spf13/cobra"
@@ -21,7 +21,7 @@ type commentService interface {
 }
 
 type commonOptions struct {
-	io     *iostreams.IOStreams
+	term   term.Term
 	global *globalOptions
 	client commentService
 }
@@ -60,21 +60,21 @@ var executableName = func() string {
 }
 
 func New() *cobra.Command {
-	return NewWithIO(iostreams.System())
+	return NewWithTerm(term.FromEnv())
 }
 
-func NewWithIO(streams *iostreams.IOStreams) *cobra.Command {
+func NewWithTerm(terminal term.Term) *cobra.Command {
 	displayName := commandDisplayName()
 	globalOpts := &globalOptions{}
 	opts := &rootOptions{
 		commonOptions: commonOptions{
-			io:     streams,
+			term:   terminal,
 			global: globalOpts,
 		},
 	}
 	listOpts := &listOptions{
 		commonOptions: commonOptions{
-			io:     streams,
+			term:   terminal,
 			global: globalOpts,
 		},
 	}
@@ -101,8 +101,8 @@ func NewWithIO(streams *iostreams.IOStreams) *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	cmd.SetOut(streams.Out)
-	cmd.SetErr(streams.ErrOut)
+	cmd.SetOut(terminal.Out())
+	cmd.SetErr(terminal.ErrOut())
 
 	persistentFlags := cmd.PersistentFlags()
 	persistentFlags.StringVarP(&globalOpts.repo, "repo", "R", "", "Select another repository using the [HOST/]OWNER/REPO format")
@@ -262,7 +262,7 @@ func matchesAuthor(login string, authors []string) bool {
 
 func applyAction(opts *rootOptions, ids []string) error {
 	if len(ids) == 0 {
-		_, _ = fmt.Fprintln(opts.io.Out, "No matching comments found.")
+		_, _ = fmt.Fprintln(opts.term.Out(), "No matching comments found.")
 		return nil
 	}
 
@@ -292,6 +292,6 @@ func applyAction(opts *rootOptions, ids []string) error {
 	if opts.undo {
 		action = "Unminimized"
 	}
-	_, _ = fmt.Fprintf(opts.io.Out, "%s %d comment(s).\n", action, updated)
+	_, _ = fmt.Fprintf(opts.term.Out(), "%s %d comment(s).\n", action, updated)
 	return nil
 }
