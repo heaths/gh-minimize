@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"regexp"
 
 	ghclient "github.com/heaths/gh-minimize/internal/github"
@@ -21,7 +22,7 @@ func ensureClient(client commentService) (commentService, error) {
 	return resolved, nil
 }
 
-func loadFilteredComments(client commentService, repoFlag string, args []string, authors []string, bodyGrep string) ([]ghclient.Comment, error) {
+func loadFilteredComments(client commentService, output io.Writer, repoFlag string, args []string, authors []string, bodyGrep string) ([]ghclient.Comment, error) {
 	repo, err := options.ResolveRepository(repoFlag)
 	if err != nil {
 		return nil, err
@@ -36,6 +37,9 @@ func loadFilteredComments(client commentService, repoFlag string, args []string,
 	if err != nil {
 		return nil, err
 	}
+
+	indicator := startProgress(output)
+	defer stopProgress(indicator)
 
 	comments, err := client.FindIssueOrPullRequestComments(repo.Owner, repo.Name, targetNumber)
 	if err != nil {

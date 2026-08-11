@@ -20,7 +20,7 @@ func runList(opts *listOptions, args []string) error {
 	}
 	opts.client = client
 
-	comments, err := loadFilteredComments(opts.client, opts.repoFlag(), args, opts.authors, opts.bodyGrep)
+	comments, err := loadFilteredComments(opts.client, opts.term.ErrOut(), opts.repoFlag(), args, opts.authors, opts.bodyGrep)
 	if err != nil {
 		return err
 	}
