@@ -12,6 +12,8 @@
   ],
   "words": [
     "Docf",
+    "CLICOLOR",
+    "ghrepo",
     "ghjq",
     "ghtemplate",
     "golang",
@@ -27,6 +29,7 @@
     "stdlib",
     "stretchr",
     "tmpl",
+    "minimizable",
     "unminimize",
     "unminimizes",
     "unminimized"

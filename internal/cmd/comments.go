@@ -37,7 +37,7 @@ func loadFilteredComments(client commentService, repoFlag string, args []string,
 		return nil, err
 	}
 
-	comments, err := client.FindIssueOrPullRequestComments(repo.Owner(), repo.Name(), targetNumber)
+	comments, err := client.FindIssueOrPullRequestComments(repo.Owner, repo.Name, targetNumber)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find comments: %w", err)
 	}
