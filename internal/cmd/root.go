@@ -188,7 +188,7 @@ func run(opts *rootOptions, args []string) error {
 		return applyAction(opts, []string{opts.id})
 	}
 
-	comments, err := loadFilteredComments(opts.client, opts.repoFlag(), args, opts.authors, opts.bodyGrep)
+	comments, err := loadFilteredComments(opts.client, opts.term.ErrOut(), opts.repoFlag(), args, opts.authors, opts.bodyGrep)
 	if err != nil {
 		return err
 	}
@@ -274,6 +274,9 @@ func applyAction(opts *rootOptions, ids []string) error {
 			return err
 		}
 	}
+
+	indicator := startProgress(opts.term.ErrOut())
+	defer stopProgress(indicator)
 
 	updated := 0
 	for _, id := range ids {

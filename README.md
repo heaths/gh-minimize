@@ -3,7 +3,8 @@
 [![releases](https://img.shields.io/github/v/release/heaths/gh-minimize.svg?logo=github)](https://github.com/heaths/gh-minimize/releases/latest)
 [![ci](https://github.com/heaths/gh-minimize/actions/workflows/ci.yml/badge.svg?event=push)](https://github.com/heaths/gh-minimize/actions/workflows/ci.yml)
 
-GitHub CLI extension to minimize (hide) issue and pull request comments with a reason such as "off-topic", "resolved", or "spam".
+GitHub CLI extension to minimize (hide) issue and pull request comments
+with a reason such as "off-topic", "resolved", or "spam".
 
 ## Install
 
@@ -30,6 +31,12 @@ gh minimize list 123 --template '{{range .}}{{printf "%s\t%t\n" .author .isMinim
 ```
 
 Use `-R` / `--repo` to target another repository in `[HOST/]OWNER/REPO` format.
+While processing comments, `gh minimize` displays a spinner on
+standard error when standard error is a TTY. Set `GH_SPINNER_DISABLED=1` or
+`GH_SPINNER_DISABLED=true` to disable it.
+
+Run `gh help environment` for more details about this and other environment
+variables such as `GH_REPO` and `NO_COLOR`.
 
 ### Minimize or unminimize comments
 
@@ -59,7 +66,9 @@ Valid `--reason` values:
 
 ### GitHub Actions
 
-You can use this extension in an `issue_comment` (used for both issues and pull requests) workflow with only the permissions needed to minimize comments:
+You can use this extension in an `issue_comment` workflow, which GitHub uses
+for both issues and pull requests, with only the permissions needed to
+minimize comments:
 
 ```yaml
 on:

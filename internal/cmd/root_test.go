@@ -21,6 +21,7 @@ type mockService struct {
 	unminimizeErrByID map[string]error
 	minimized         []string
 	unminimized       []string
+	output            io.Writer
 }
 
 func (m *mockService) FindIssueOrPullRequestComments(owner, repo string, number int) ([]ghclient.Comment, error) {
@@ -41,6 +42,19 @@ func (m *mockService) UnminimizeComment(id string) error {
 	}
 	m.unminimized = append(m.unminimized, id)
 	return nil
+}
+
+type fakeProgressIndicator struct {
+	started int
+	stopped int
+}
+
+func (f *fakeProgressIndicator) Start() {
+	f.started++
+}
+
+func (f *fakeProgressIndicator) Stop() {
+	f.stopped++
 }
 
 func TestValidateFlags(t *testing.T) {
@@ -232,6 +246,12 @@ func TestFilterCommentIDs(t *testing.T) {
 
 func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
 	terminal, stdout, _ := testTerminal(t, false, false)
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
 	mock := &mockService{
 		comments: []ghclient.Comment{
 			{ID: "1", Author: "octocat", Body: "old context", IsMinimized: false},
@@ -254,6 +274,8 @@ func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"1:OUTDATED"}, mock.minimized)
 	require.Contains(t, fileString(t, stdout), "Minimized 1 comment(s).")
+	require.Equal(t, 2, indicator.started)
+	require.Equal(t, 2, indicator.stopped)
 }
 
 func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
@@ -284,6 +306,12 @@ func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
 
 func TestApplyAction_Minimize(t *testing.T) {
 	terminal, stdout, _ := testTerminal(t, false, false)
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
 	mock := &mockService{}
 	opts := &rootOptions{
 		reason: "off-topic",
@@ -297,10 +325,18 @@ func TestApplyAction_Minimize(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"a:OFF_TOPIC", "b:OFF_TOPIC"}, mock.minimized)
 	require.Contains(t, fileString(t, stdout), "Minimized 2 comment(s).")
+	require.Equal(t, 1, indicator.started)
+	require.Equal(t, 1, indicator.stopped)
 }
 
 func TestApplyAction_UnminimizeError(t *testing.T) {
 	terminal, _, _ := testTerminal(t, false, false)
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
 	mock := &mockService{
 		unminimizeErrByID: map[string]error{
 			"a": errors.New("boom"),
@@ -316,6 +352,8 @@ func TestApplyAction_UnminimizeError(t *testing.T) {
 
 	err := applyAction(opts, []string{"a"})
 	require.ErrorContains(t, err, "failed to update comment a")
+	require.Equal(t, 1, indicator.started)
+	require.Equal(t, 1, indicator.stopped)
 }
 
 func TestRunList_DefaultOutput(t *testing.T) {
@@ -487,23 +525,46 @@ func TestWriteCommentOutput_TemplateCanAccessAuthorType(t *testing.T) {
 }
 
 func TestLoadFilteredComments_InvalidRegex(t *testing.T) {
-	_, err := loadFilteredComments(&mockService{}, "OWNER/REPO", []string{"123"}, nil, "[")
+	_, err := loadFilteredComments(&mockService{}, nil, "OWNER/REPO", []string{"123"}, nil, "[")
 	require.ErrorContains(t, err, "invalid --body-grep regex")
 }
 
 func TestLoadFilteredComments_FiltersPageableResults(t *testing.T) {
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
+
 	comments, err := loadFilteredComments(&mockService{
 		comments: []ghclient.Comment{
 			{ID: "1", Author: "octocat", Body: "keep this"},
 			{ID: "2", Author: "hubot", Body: "drop this"},
 			{ID: "3", Author: "octocat", Body: "keep that"},
 		},
-	}, "OWNER/REPO", []string{"123"}, []string{"octocat"}, "keep")
+	}, nil, "OWNER/REPO", []string{"123"}, []string{"octocat"}, "keep")
 	require.NoError(t, err)
 	require.Equal(t, []ghclient.Comment{
 		{ID: "1", Author: "octocat", Body: "keep this"},
 		{ID: "3", Author: "octocat", Body: "keep that"},
 	}, comments)
+	require.Equal(t, 1, indicator.started)
+	require.Equal(t, 1, indicator.stopped)
+}
+
+func TestLoadFilteredComments_QueryErrorStopsSpinner(t *testing.T) {
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
+
+	_, err := loadFilteredComments(&mockService{findErr: errors.New("boom")}, nil, "OWNER/REPO", []string{"123"}, nil, "")
+	require.ErrorContains(t, err, "failed to find comments: boom")
+	require.Equal(t, 1, indicator.started)
+	require.Equal(t, 1, indicator.stopped)
 }
 
 func testTerminal(t *testing.T, tty bool, colorEnabled bool) (term.Term, *os.File, *os.File) {
