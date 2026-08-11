@@ -46,6 +46,7 @@ func (m *mockService) UnminimizeComment(id string) error {
 type fakeProgressIndicator struct {
 	started int
 	stopped int
+	onStop  func()
 }
 
 func (f *fakeProgressIndicator) Start() {
@@ -54,6 +55,9 @@ func (f *fakeProgressIndicator) Start() {
 
 func (f *fakeProgressIndicator) Stop() {
 	f.stopped++
+	if f.onStop != nil {
+		f.onStop()
+	}
 }
 
 func TestValidateFlags(t *testing.T) {
@@ -272,7 +276,7 @@ func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
 	err := run(opts, []string{"123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"1:OUTDATED"}, mock.minimized)
-	require.Contains(t, fileString(t, stdout), "Minimized 1 comment(s).")
+	require.Contains(t, fileString(t, stdout), "Minimized 1 comment.")
 	require.Equal(t, 2, indicator.started)
 	require.Equal(t, 2, indicator.stopped)
 }
@@ -300,7 +304,7 @@ func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
 	err := run(opts, []string{"123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"1"}, mock.unminimized)
-	require.Contains(t, fileString(t, stdout), "Unminimized 1 comment(s).")
+	require.Contains(t, fileString(t, stdout), "Unminimized 1 comment.")
 }
 
 func TestApplyAction_Minimize(t *testing.T) {
@@ -323,7 +327,33 @@ func TestApplyAction_Minimize(t *testing.T) {
 	err := applyAction(opts, []string{"a", "b"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"a:OFF_TOPIC", "b:OFF_TOPIC"}, mock.minimized)
-	require.Contains(t, fileString(t, stdout), "Minimized 2 comment(s).")
+	require.Contains(t, fileString(t, stdout), "Minimized 2 comments.")
+	require.Equal(t, 1, indicator.started)
+	require.Equal(t, 1, indicator.stopped)
+}
+
+func TestApplyAction_StopsSpinnerBeforePrintingSummary(t *testing.T) {
+	terminal, stdout, _ := testTerminal(t, false, false)
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
+	indicator.onStop = func() {
+		require.Empty(t, fileString(t, stdout))
+	}
+	opts := &rootOptions{
+		reason: "off-topic",
+		commonOptions: commonOptions{
+			term:   terminal,
+			client: &mockService{},
+		},
+	}
+
+	err := applyAction(opts, []string{"a"})
+	require.NoError(t, err)
+	require.Equal(t, "Minimized 1 comment.\n", fileString(t, stdout))
 	require.Equal(t, 1, indicator.started)
 	require.Equal(t, 1, indicator.stopped)
 }
