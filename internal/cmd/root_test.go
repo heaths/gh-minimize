@@ -21,7 +21,6 @@ type mockService struct {
 	unminimizeErrByID map[string]error
 	minimized         []string
 	unminimized       []string
-	output            io.Writer
 }
 
 func (m *mockService) FindIssueOrPullRequestComments(owner, repo string, number int) ([]ghclient.Comment, error) {
