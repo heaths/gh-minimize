@@ -8,6 +8,7 @@ import (
 
 	"github.com/MakeNowJust/heredoc"
 	"github.com/cli/go-gh/v2/pkg/term"
+	"github.com/cli/go-gh/v2/pkg/text"
 	ghclient "github.com/heaths/gh-minimize/internal/github"
 	"github.com/heaths/gh-minimize/internal/options"
 	"github.com/spf13/cobra"
@@ -276,7 +277,9 @@ func applyAction(opts *rootOptions, ids []string) error {
 	}
 
 	indicator := startProgress(opts.term.ErrOut())
-	defer stopProgress(indicator)
+	defer func() {
+		stopProgress(indicator)
+	}()
 
 	updated := 0
 	for _, id := range ids {
@@ -291,10 +294,13 @@ func applyAction(opts *rootOptions, ids []string) error {
 		updated++
 	}
 
+	stopProgress(indicator)
+	indicator = nil
+
 	action := "Minimized"
 	if opts.undo {
 		action = "Unminimized"
 	}
-	_, _ = fmt.Fprintf(opts.term.Out(), "%s %d comment(s).\n", action, updated)
+	_, _ = fmt.Fprintf(opts.term.Out(), "%s %s.\n", action, text.Pluralize(updated, "comment"))
 	return nil
 }
