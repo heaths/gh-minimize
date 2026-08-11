@@ -31,12 +31,6 @@ gh minimize list 123 --template '{{range .}}{{printf "%s\t%t\n" .author .isMinim
 ```
 
 Use `-R` / `--repo` to target another repository in `[HOST/]OWNER/REPO` format.
-While processing comments, `gh minimize` displays a spinner on
-standard error when standard error is a TTY. Set `GH_SPINNER_DISABLED=1` or
-`GH_SPINNER_DISABLED=true` to disable it.
-
-Run `gh help environment` for more details about this and other environment
-variables such as `GH_REPO` and `NO_COLOR`.
 
 ### Minimize or unminimize comments
 
@@ -91,6 +85,15 @@ jobs:
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
+
+### Environment variables
+
+While processing comments, `gh minimize` displays a spinner on
+standard error when standard error is a TTY. Set `GH_SPINNER_DISABLED=1` or
+`GH_SPINNER_DISABLED=true` to disable it.
+
+Run `gh help environment` for more details about this and other environment
+variables such as `GH_REPO` and `NO_COLOR`.
 
 ## License
 
