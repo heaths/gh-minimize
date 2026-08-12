@@ -262,8 +262,9 @@ func matchesAuthor(login string, authors []string) bool {
 }
 
 func applyAction(opts *rootOptions, ids []string) error {
+	c := opts.term.ColorScheme()
 	if len(ids) == 0 {
-		_, _ = fmt.Fprintln(opts.term.Out(), "No matching comments found.")
+		_, _ = fmt.Fprintf(opts.term.Out(), "%s No matching comments found\n", c.WarningIcon())
 		return nil
 	}
 
@@ -301,6 +302,6 @@ func applyAction(opts *rootOptions, ids []string) error {
 	if opts.undo {
 		action = "Unminimized"
 	}
-	_, _ = fmt.Fprintf(opts.term.Out(), "%s %s.\n", action, text.Pluralize(updated, "comment"))
+	_, _ = fmt.Fprintf(opts.term.Out(), "%s %s %s\n", c.SuccessIcon(), action, text.Pluralize(updated, "comment"))
 	return nil
 }
