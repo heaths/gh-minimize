@@ -276,7 +276,7 @@ func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
 	err := run(opts, []string{"123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"1:OUTDATED"}, mock.minimized)
-	require.Contains(t, fileString(t, stdout), "Minimized 1 comment.")
+	requireStatusLine(t, terminal, stdout, terminal.ColorScheme().SuccessIcon(), "Minimized 1 comment")
 	require.Equal(t, 2, indicator.started)
 	require.Equal(t, 2, indicator.stopped)
 }
@@ -304,32 +304,44 @@ func TestRun_UnminimizeSkipsAlreadyUnminimized(t *testing.T) {
 	err := run(opts, []string{"123"})
 	require.NoError(t, err)
 	require.Equal(t, []string{"1"}, mock.unminimized)
-	require.Contains(t, fileString(t, stdout), "Unminimized 1 comment.")
+	requireStatusLine(t, terminal, stdout, terminal.ColorScheme().SuccessIcon(), "Unminimized 1 comment")
 }
 
 func TestApplyAction_Minimize(t *testing.T) {
-	terminal, stdout, _ := testTerminal(t, false, false)
-	indicator := &fakeProgressIndicator{}
-	oldNewProgressIndicator := newProgressIndicator
-	t.Cleanup(func() {
-		newProgressIndicator = oldNewProgressIndicator
-	})
-	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
-	mock := &mockService{}
-	opts := &rootOptions{
-		reason: "off-topic",
-		commonOptions: commonOptions{
-			term:   terminal,
-			client: mock,
-		},
+	tests := []struct {
+		name         string
+		colorEnabled bool
+	}{
+		{name: "color disabled", colorEnabled: false},
+		{name: "color enabled", colorEnabled: true},
 	}
 
-	err := applyAction(opts, []string{"a", "b"})
-	require.NoError(t, err)
-	require.Equal(t, []string{"a:OFF_TOPIC", "b:OFF_TOPIC"}, mock.minimized)
-	require.Contains(t, fileString(t, stdout), "Minimized 2 comments.")
-	require.Equal(t, 1, indicator.started)
-	require.Equal(t, 1, indicator.stopped)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			terminal, stdout, _ := testTerminal(t, true, tt.colorEnabled)
+			indicator := &fakeProgressIndicator{}
+			oldNewProgressIndicator := newProgressIndicator
+			t.Cleanup(func() {
+				newProgressIndicator = oldNewProgressIndicator
+			})
+			newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
+			mock := &mockService{}
+			opts := &rootOptions{
+				reason: "off-topic",
+				commonOptions: commonOptions{
+					term:   terminal,
+					client: mock,
+				},
+			}
+
+			err := applyAction(opts, []string{"a", "b"})
+			require.NoError(t, err)
+			require.Equal(t, []string{"a:OFF_TOPIC", "b:OFF_TOPIC"}, mock.minimized)
+			requireStatusLine(t, terminal, stdout, terminal.ColorScheme().SuccessIcon(), "Minimized 2 comments")
+			require.Equal(t, 1, indicator.started)
+			require.Equal(t, 1, indicator.stopped)
+		})
+	}
 }
 
 func TestApplyAction_StopsSpinnerBeforePrintingSummary(t *testing.T) {
@@ -353,9 +365,36 @@ func TestApplyAction_StopsSpinnerBeforePrintingSummary(t *testing.T) {
 
 	err := applyAction(opts, []string{"a"})
 	require.NoError(t, err)
-	require.Equal(t, "Minimized 1 comment.\n", fileString(t, stdout))
+	requireStatusLine(t, terminal, stdout, terminal.ColorScheme().SuccessIcon(), "Minimized 1 comment")
 	require.Equal(t, 1, indicator.started)
 	require.Equal(t, 1, indicator.stopped)
+}
+
+func TestApplyAction_NoMatchingCommentsUsesWarningIcon(t *testing.T) {
+	tests := []struct {
+		name         string
+		colorEnabled bool
+	}{
+		{name: "color disabled", colorEnabled: false},
+		{name: "color enabled", colorEnabled: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			terminal, stdout, _ := testTerminal(t, true, tt.colorEnabled)
+			opts := &rootOptions{
+				reason: "off-topic",
+				commonOptions: commonOptions{
+					term:   terminal,
+					client: &mockService{},
+				},
+			}
+
+			err := applyAction(opts, nil)
+			require.NoError(t, err)
+			requireStatusLine(t, terminal, stdout, terminal.ColorScheme().WarningIcon(), "No matching comments found")
+		})
+	}
 }
 
 func TestApplyAction_UnminimizeError(t *testing.T) {
@@ -638,4 +677,10 @@ func fileString(t *testing.T, file *os.File) string {
 	data, err := io.ReadAll(file)
 	require.NoError(t, err)
 	return string(data)
+}
+
+func requireStatusLine(t *testing.T, terminal term.Term, file *os.File, icon, message string) {
+	t.Helper()
+
+	require.Equal(t, fmt.Sprintf("%s %s\n", icon, message), fileString(t, file))
 }
