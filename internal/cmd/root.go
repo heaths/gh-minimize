@@ -217,8 +217,8 @@ func validateFlags(opts *rootOptions, args []string) error {
 		if len(args) > 0 {
 			return fmt.Errorf("--id cannot be used with an issue or pull request number")
 		}
-		if len(opts.authors) > 0 || opts.grep != "" {
-			return fmt.Errorf("--id cannot be used with --author or --grep")
+		if len(opts.authors) > 0 || opts.grep != "" || opts.invertGrep {
+			return fmt.Errorf("--id cannot be used with --author, --grep, or --invert-grep")
 		}
 		return nil
 	}

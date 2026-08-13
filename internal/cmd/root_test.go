@@ -128,6 +128,17 @@ func TestValidateFlags(t *testing.T) {
 			wantErr: "--id cannot be used",
 		},
 		{
+			name: "id cannot combine with invert-grep",
+			opts: rootOptions{
+				id:     "id",
+				reason: "abuse",
+				filterOptions: filterOptions{
+					invertGrep: true,
+				},
+			},
+			wantErr: "--id cannot be used",
+		},
+		{
 			name: "accepts grep alone",
 			opts: rootOptions{
 				reason: "abuse",
