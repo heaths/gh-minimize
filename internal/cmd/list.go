@@ -20,7 +20,7 @@ func runList(opts *listOptions, args []string) error {
 	}
 	opts.client = client
 
-	comments, err := loadFilteredComments(opts.client, opts.term.ErrOut(), opts.repoFlag(), args, opts.authors, opts.bodyGrep)
+	comments, err := loadFilteredComments(opts.client, opts.term.ErrOut(), opts.repoFlag(), args, opts.authors, opts.grep, opts.invertGrep)
 	if err != nil {
 		return err
 	}
@@ -69,14 +69,14 @@ func marshalCommentOutput(opts *listOptions, comments []ghclient.Comment) ([]byt
 	return marshalJSON(data)
 }
 
-func filterComments(comments []ghclient.Comment, authors []string, bodyRegex *regexp.Regexp) []ghclient.Comment {
+func filterComments(comments []ghclient.Comment, authors []string, grepRegex *regexp.Regexp, invertGrep bool) []ghclient.Comment {
 	filtered := make([]ghclient.Comment, 0, len(comments))
 
 	for _, comment := range comments {
 		if len(authors) > 0 && !matchesAuthor(comment.Author, authors) {
 			continue
 		}
-		if bodyRegex != nil && !bodyRegex.MatchString(comment.Body) {
+		if grepRegex != nil && grepRegex.MatchString(comment.Body) == invertGrep {
 			continue
 		}
 
