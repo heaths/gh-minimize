@@ -22,7 +22,7 @@ func ensureClient(client commentService) (commentService, error) {
 	return resolved, nil
 }
 
-func loadFilteredComments(client commentService, output io.Writer, repoFlag string, args []string, authors []string, bodyGrep string) ([]ghclient.Comment, error) {
+func loadFilteredComments(client commentService, output io.Writer, repoFlag string, args []string, authors []string, grep string, invertGrep bool) ([]ghclient.Comment, error) {
 	repo, err := options.ResolveRepository(repoFlag)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func loadFilteredComments(client commentService, output io.Writer, repoFlag stri
 		return nil, err
 	}
 
-	bodyRegex, err := compileBodyRegex(bodyGrep)
+	grepRegex, err := compileGrepRegex(grep)
 	if err != nil {
 		return nil, err
 	}
@@ -46,18 +46,18 @@ func loadFilteredComments(client commentService, output io.Writer, repoFlag stri
 		return nil, fmt.Errorf("failed to find comments: %w", err)
 	}
 
-	return filterComments(comments, authors, bodyRegex), nil
+	return filterComments(comments, authors, grepRegex, invertGrep), nil
 }
 
-func compileBodyRegex(bodyGrep string) (*regexp.Regexp, error) {
-	if bodyGrep == "" {
+func compileGrepRegex(grep string) (*regexp.Regexp, error) {
+	if grep == "" {
 		return nil, nil
 	}
 
-	bodyRegex, err := regexp.Compile(bodyGrep)
+	grepRegex, err := regexp.Compile(grep)
 	if err != nil {
-		return nil, fmt.Errorf("invalid --body-grep regex: %w", err)
+		return nil, fmt.Errorf("invalid --grep regex: %w", err)
 	}
 
-	return bodyRegex, nil
+	return grepRegex, nil
 }

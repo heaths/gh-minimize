@@ -21,15 +21,17 @@
 - forms
   - `gh minimize --id <node-id> --reason <reason>`
   - `gh minimize --id <node-id> --undo`
-  - `gh minimize <number> --author <login> [--body-grep <regex>] --reason <reason>`
-  - `gh minimize <number> --author <login> [--body-grep <regex>] --undo`
-  - `gh minimize <number> --body-grep <regex> --reason <reason>`
-  - `gh minimize <number> --body-grep <regex> --undo`
+  - `gh minimize <number> --author <login> [--grep <regex>] [--invert-grep] --reason <reason>`
+  - `gh minimize <number> --author <login> [--grep <regex>] [--invert-grep] --undo`
+  - `gh minimize <number> --grep <regex> [--invert-grep] --reason <reason>`
+  - `gh minimize <number> --grep <regex> [--invert-grep] --undo`
 - without `--id` exactly one positional issue/PR number is required
-- `--id` is mutually exclusive with `--author` and `--body-grep`
+- `--grep` matches only comment text and supports basic regular expressions only
+- `--invert-grep` matches comments that do not match `--grep`; no effect if `--grep` is unset
+- `--id` is mutually exclusive with `--author`, `--grep`, and `--invert-grep`
 - `--undo` is mutually exclusive with `--reason`
 - one of `--reason` or `--undo` is required
-- in non-`--id` mode at least one of `--author` or `--body-grep` is required
+- in non-`--id` mode at least one of `--author` or `--grep` is required
 - `-R/--repo` supports `[HOST/]OWNER/REPO` else current repo
 
 ## Reason values

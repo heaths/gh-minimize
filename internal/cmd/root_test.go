@@ -88,7 +88,7 @@ func TestValidateFlags(t *testing.T) {
 			opts: rootOptions{
 				reason: "abuse",
 			},
-			wantErr: "at least one of --author or --body-grep",
+			wantErr: "at least one of --author or --grep",
 		},
 		{
 			name: "accepts search with issue or pr number",
@@ -116,6 +116,37 @@ func TestValidateFlags(t *testing.T) {
 				reason: "abuse",
 			},
 		},
+		{
+			name: "id cannot combine with grep",
+			opts: rootOptions{
+				id:     "id",
+				reason: "abuse",
+				filterOptions: filterOptions{
+					grep: "old",
+				},
+			},
+			wantErr: "--id cannot be used",
+		},
+		{
+			name: "id cannot combine with invert-grep",
+			opts: rootOptions{
+				id:     "id",
+				reason: "abuse",
+				filterOptions: filterOptions{
+					invertGrep: true,
+				},
+			},
+			wantErr: "--id cannot be used",
+		},
+		{
+			name: "accepts grep alone",
+			opts: rootOptions{
+				reason: "abuse",
+				filterOptions: filterOptions{
+					grep: "old",
+				},
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -139,6 +170,21 @@ func TestNew_AuthorFlagSupportsMultipleSwitches(t *testing.T) {
 	authors, err := cmd.Flags().GetStringArray("author")
 	require.NoError(t, err)
 	require.Equal(t, []string{"octocat", "hubot"}, authors)
+}
+
+func TestNew_GrepAndInvertGrepFlags(t *testing.T) {
+	cmd := New()
+
+	err := cmd.ParseFlags([]string{"--grep", "old.*context", "--invert-grep"})
+	require.NoError(t, err)
+
+	grep, err := cmd.Flags().GetString("grep")
+	require.NoError(t, err)
+	require.Equal(t, "old.*context", grep)
+
+	invertGrep, err := cmd.Flags().GetBool("invert-grep")
+	require.NoError(t, err)
+	require.True(t, invertGrep)
 }
 
 func TestNew_RepoFlagIsPersistent(t *testing.T) {
@@ -240,11 +286,32 @@ func TestFilterCommentIDs(t *testing.T) {
 	}
 
 	re := regexp.MustCompile("old")
-	gotMinimize := filterCommentIDs(filterComments(comments, []string{"octocat", "mona"}, re), false)
+	gotMinimize := filterCommentIDs(filterComments(comments, []string{"octocat", "mona"}, re, false), false)
 	require.Equal(t, []string{"4"}, gotMinimize)
 
-	gotUndo := filterCommentIDs(filterComments(comments, []string{"octocat", "hubot"}, re), true)
+	gotUndo := filterCommentIDs(filterComments(comments, []string{"octocat", "hubot"}, re, false), true)
 	require.Equal(t, []string{"2"}, gotUndo)
+}
+
+func TestFilterComments_InvertGrep(t *testing.T) {
+	comments := []ghclient.Comment{
+		{ID: "1", Author: "octocat", Body: "hello world"},
+		{ID: "2", Author: "octocat", Body: "old context"},
+	}
+
+	re := regexp.MustCompile("old")
+	got := filterComments(comments, nil, re, true)
+	require.Equal(t, []ghclient.Comment{{ID: "1", Author: "octocat", Body: "hello world"}}, got)
+}
+
+func TestFilterComments_InvertGrepNoEffectWithoutGrep(t *testing.T) {
+	comments := []ghclient.Comment{
+		{ID: "1", Author: "octocat", Body: "hello world"},
+		{ID: "2", Author: "octocat", Body: "old context"},
+	}
+
+	got := filterComments(comments, nil, nil, true)
+	require.Equal(t, comments, got)
 }
 
 func TestRun_MinimizeSkipsAlreadyMinimized(t *testing.T) {
@@ -533,8 +600,8 @@ func TestRunList_FilteredOutput(t *testing.T) {
 	terminal, stdout, _ := testTerminal(t, false, false)
 	opts := &listOptions{
 		filterOptions: filterOptions{
-			authors:  []string{"hubot"},
-			bodyGrep: "old",
+			authors: []string{"hubot"},
+			grep:    "old",
 		},
 		commonOptions: commonOptions{
 			term:   terminal,
@@ -593,8 +660,8 @@ func TestWriteCommentOutput_TemplateCanAccessAuthorType(t *testing.T) {
 }
 
 func TestLoadFilteredComments_InvalidRegex(t *testing.T) {
-	_, err := loadFilteredComments(&mockService{}, nil, "OWNER/REPO", []string{"123"}, nil, "[")
-	require.ErrorContains(t, err, "invalid --body-grep regex")
+	_, err := loadFilteredComments(&mockService{}, nil, "OWNER/REPO", []string{"123"}, nil, "[", false)
+	require.ErrorContains(t, err, "invalid --grep regex")
 }
 
 func TestLoadFilteredComments_FiltersPageableResults(t *testing.T) {
@@ -611,7 +678,7 @@ func TestLoadFilteredComments_FiltersPageableResults(t *testing.T) {
 			{ID: "2", Author: "hubot", Body: "drop this"},
 			{ID: "3", Author: "octocat", Body: "keep that"},
 		},
-	}, nil, "OWNER/REPO", []string{"123"}, []string{"octocat"}, "keep")
+	}, nil, "OWNER/REPO", []string{"123"}, []string{"octocat"}, "keep", false)
 	require.NoError(t, err)
 	require.Equal(t, []ghclient.Comment{
 		{ID: "1", Author: "octocat", Body: "keep this"},
@@ -619,6 +686,26 @@ func TestLoadFilteredComments_FiltersPageableResults(t *testing.T) {
 	}, comments)
 	require.Equal(t, 1, indicator.started)
 	require.Equal(t, 1, indicator.stopped)
+}
+
+func TestLoadFilteredComments_InvertGrep(t *testing.T) {
+	indicator := &fakeProgressIndicator{}
+	oldNewProgressIndicator := newProgressIndicator
+	t.Cleanup(func() {
+		newProgressIndicator = oldNewProgressIndicator
+	})
+	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
+
+	comments, err := loadFilteredComments(&mockService{
+		comments: []ghclient.Comment{
+			{ID: "1", Author: "octocat", Body: "keep this"},
+			{ID: "2", Author: "hubot", Body: "drop this"},
+		},
+	}, nil, "OWNER/REPO", []string{"123"}, nil, "keep", true)
+	require.NoError(t, err)
+	require.Equal(t, []ghclient.Comment{
+		{ID: "2", Author: "hubot", Body: "drop this"},
+	}, comments)
 }
 
 func TestLoadFilteredComments_QueryErrorStopsSpinner(t *testing.T) {
@@ -629,7 +716,7 @@ func TestLoadFilteredComments_QueryErrorStopsSpinner(t *testing.T) {
 	})
 	newProgressIndicator = func(io.Writer) progressIndicator { return indicator }
 
-	_, err := loadFilteredComments(&mockService{findErr: errors.New("boom")}, nil, "OWNER/REPO", []string{"123"}, nil, "")
+	_, err := loadFilteredComments(&mockService{findErr: errors.New("boom")}, nil, "OWNER/REPO", []string{"123"}, nil, "", false)
 	require.ErrorContains(t, err, "failed to find comments: boom")
 	require.Equal(t, 1, indicator.started)
 	require.Equal(t, 1, indicator.stopped)

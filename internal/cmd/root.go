@@ -28,8 +28,9 @@ type commonOptions struct {
 }
 
 type filterOptions struct {
-	authors  []string
-	bodyGrep string
+	authors    []string
+	grep       string
+	invertGrep bool
 }
 
 type rootOptions struct {
@@ -90,9 +91,9 @@ func NewWithTerm(terminal term.Term) *cobra.Command {
 		Example: heredoc.Docf(`
 			$ %[1]s --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic
 			$ %[1]s --id MDEyOklzc3VlQ29tbWVudDE= --undo
-			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --reason outdated
+			$ %[1]s 123 --author octocat --grep 'obsolete.*context' --reason outdated
 			$ %[1]s 123 --author octocat --author hubot --reason resolved
-			$ %[1]s 123 --author octocat --body-grep 'obsolete.*context' --undo
+			$ %[1]s 123 --author octocat --grep 'obsolete.*context' --undo
 			$ %[1]s list 123
 		`, displayName),
 		Args: positionalIssueOrPullRequestArgs(false),
@@ -117,7 +118,8 @@ func NewWithTerm(terminal term.Term) *cobra.Command {
 		return ghclient.AllowedReasons(), cobra.ShellCompDirectiveNoFileComp
 	})
 	cmd.MarkFlagsMutuallyExclusive("id", "author")
-	cmd.MarkFlagsMutuallyExclusive("id", "body-grep")
+	cmd.MarkFlagsMutuallyExclusive("id", "grep")
+	cmd.MarkFlagsMutuallyExclusive("id", "invert-grep")
 	cmd.MarkFlagsMutuallyExclusive("undo", "reason")
 
 	listCmd := &cobra.Command{
@@ -144,7 +146,8 @@ func NewWithTerm(terminal term.Term) *cobra.Command {
 
 func addFilterFlags(flags *pflag.FlagSet, opts *filterOptions) {
 	flags.StringArrayVar(&opts.authors, "author", nil, "Comment author login filter; repeat to match any specified login")
-	flags.StringVar(&opts.bodyGrep, "body-grep", "", "Go regular expression to filter comment body text")
+	flags.StringVar(&opts.grep, "grep", "", "Filter comments by matching only their text, supporting basic regular expressions only")
+	flags.BoolVar(&opts.invertGrep, "invert-grep", false, "Select comments that do not match --grep")
 }
 
 func positionalIssueOrPullRequestArgs(required bool) cobra.PositionalArgs {
@@ -189,7 +192,7 @@ func run(opts *rootOptions, args []string) error {
 		return applyAction(opts, []string{opts.id})
 	}
 
-	comments, err := loadFilteredComments(opts.client, opts.term.ErrOut(), opts.repoFlag(), args, opts.authors, opts.bodyGrep)
+	comments, err := loadFilteredComments(opts.client, opts.term.ErrOut(), opts.repoFlag(), args, opts.authors, opts.grep, opts.invertGrep)
 	if err != nil {
 		return err
 	}
@@ -214,13 +217,13 @@ func validateFlags(opts *rootOptions, args []string) error {
 		if len(args) > 0 {
 			return fmt.Errorf("--id cannot be used with an issue or pull request number")
 		}
-		if len(opts.authors) > 0 || opts.bodyGrep != "" {
-			return fmt.Errorf("--id cannot be used with --author or --body-grep")
+		if len(opts.authors) > 0 || opts.grep != "" || opts.invertGrep {
+			return fmt.Errorf("--id cannot be used with --author, --grep, or --invert-grep")
 		}
 		return nil
 	}
-	if len(opts.authors) == 0 && opts.bodyGrep == "" {
-		return fmt.Errorf("at least one of --author or --body-grep is required when --id is not provided")
+	if len(opts.authors) == 0 && opts.grep == "" {
+		return fmt.Errorf("at least one of --author or --grep is required when --id is not provided")
 	}
 
 	return nil

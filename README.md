@@ -23,7 +23,7 @@ List issue or review comments so you can find comment IDs:
 
 ```bash
 gh minimize list 123
-gh minimize list 123 --author octocat --author hubot --body-grep 'obsolete.*context'
+gh minimize list 123 --author octocat --author hubot --grep 'obsolete.*context'
 gh minimize list 123 --json id,author,isMinimized
 gh minimize list 123 --jq '.[].author'
 gh minimize list 123 --jq '[.[] | select(.authorType == "bot")]'
@@ -41,11 +41,13 @@ gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --reason off-topic
 gh minimize --id MDEyOklzc3VlQ29tbWVudDE= --undo
 ```
 
-Filter comments in an issue or pull request by author and/or body regex:
+Filter comments in an issue or pull request by author and/or comment text
+(`--grep` supports basic regular expressions only; add `--invert-grep` to
+match comments that do *not* match `--grep`):
 
 ```bash
-gh minimize 123 --author octocat --body-grep 'obsolete.*context' --reason outdated
-gh minimize 123 --author octocat --body-grep 'obsolete.*context' --undo
+gh minimize 123 --author octocat --grep 'obsolete.*context' --reason outdated
+gh minimize 123 --author octocat --grep 'obsolete.*context' --undo
 ```
 
 Valid `--reason` values:
@@ -81,7 +83,7 @@ jobs:
     steps:
     - run: |
         gh ext install heaths/gh-minimize
-        gh minimize ${{ github.event.pull_request.number }} --author github-actions --body-grep 'new changes have been pushed to this pull request' --reason outdated
+        gh minimize ${{ github.event.pull_request.number }} --author github-actions --grep 'new changes have been pushed to this pull request' --reason outdated
       env:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
